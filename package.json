@@ -1,10 +1,10 @@
 {
   "name": "forked-fates",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "Forked Fates complete Recorded Original",
+  "description": "Forked Fates immutable Recorded Original and authoritative World Engine",
   "scripts": {
-    "check": "node --check recorded-data.js && node --check app.js",
-    "test": "node --test tests/phase1.test.js"
+    "check": "node --check recorded-data.js && node --check app.js && node --check world-scenario.js && node --check world-engine.js",
+    "test": "node --test tests/phase1.test.js tests/world-engine.test.js"
   }
 }
