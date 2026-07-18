@@ -96,8 +96,11 @@ test("Authoritative turn zero exactly represents the PRD starting world", () => 
   assert.equal(ownership.get("mem-start-sera-orin-order"), "sera");
   assert.equal(ownership.get("mem-start-orin-order"), "orin");
   assert.equal(ownership.get("mem-start-mara-deadline"), "mara");
-  assert.equal(state.npcs.mara.beliefs["fact-orin-ordered-sera"].stance, "uncertain");
-  assert.equal(state.npcs.dain.beliefs["fact-orin-ordered-sera"].stance, "uncertain");
+  assert.equal(state.npcs.mara.beliefs["fact-orin-ordered-sera"], undefined);
+  assert.equal(state.npcs.mara.beliefs["fact-antidote-storehouse"], undefined);
+  assert.equal(state.npcs.mara.beliefs["fact-case-spare-key"], undefined);
+  assert.equal(state.npcs.mara.beliefs["fact-orin-holds-spare-key"].confidence, 100);
+  assert.equal(state.npcs.dain.beliefs["fact-orin-ordered-sera"], undefined);
 });
 
 test("One authoritative turn resolves in PRD phase order from one shared intent boundary", () => {
@@ -120,7 +123,7 @@ test("One authoritative turn resolves in PRD phase order from one shared intent 
   assert.equal(turnOne.npcs.mara.beliefs["fact-case-spare-key"].confidence, 90);
   assert.equal(turnOne.patient.status, "Untreated");
   assert.equal(start.turn, 0);
-  assert.equal(start.npcs.mara.beliefs["fact-case-spare-key"].confidence, 70);
+  assert.equal(start.npcs.mara.beliefs["fact-case-spare-key"], undefined);
 });
 
 test("All seven legal action families resolve through authoritative state rules", () => {

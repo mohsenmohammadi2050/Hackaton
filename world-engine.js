@@ -320,6 +320,7 @@
       description = `${actor.name} searches the Storehouse and finds no antidote there.`;
     } else if (intent.subject === "square") {
       description = `${actor.name} searches the Village Square and finds no hidden physical evidence.`;
+      factIds.push("fact-square-no-physical-evidence");
     }
 
     const event = emit(context, {
@@ -347,6 +348,8 @@
       setBelief(context, event, intent.actorId, "fact-antidote-currently-possessed", "believes-true", 100);
     } else if (intent.subject === "storehouse") {
       setBelief(context, event, intent.actorId, "fact-antidote-storehouse", "believes-false", 100);
+    } else if (intent.subject === "square") {
+      setBelief(context, event, intent.actorId, "fact-square-no-physical-evidence", "believes-true", 100);
     }
   }
 

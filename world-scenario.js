@@ -78,6 +78,8 @@
       "fact-orin-ordered-sera": { id: "fact-orin-ordered-sera", truth: true, hidden: true },
       "fact-sera-moved-antidote": { id: "fact-sera-moved-antidote", truth: true, hidden: true },
       "fact-case-spare-key": { id: "fact-case-spare-key", truth: true, hidden: false },
+      "fact-orin-holds-spare-key": { id: "fact-orin-holds-spare-key", truth: true, hidden: false },
+      "fact-square-no-physical-evidence": { id: "fact-square-no-physical-evidence", truth: true, hidden: false },
       "obs-dain-sera-sighting": { id: "obs-dain-sera-sighting", truth: true, hidden: false }
     },
     patient: { id: "niko", status: "Untreated", locationId: "clinic", treatmentTurn: null },
@@ -99,12 +101,10 @@
         memories: [
           memory("mem-start-mara-missing", "mara", "The antidote is missing from the Clinic.", "direct-observation"),
           memory("mem-start-mara-deadline", "mara", "Niko will not survive beyond turn twelve without treatment.", "professional-knowledge"),
-          memory("mem-start-mara-key", "mara", "Orin possesses a spare Clinic key.", "starting-knowledge", ["fact-case-spare-key"])
+          memory("mem-start-mara-key", "mara", "Orin possesses a spare Clinic key.", "starting-knowledge", ["fact-orin-holds-spare-key"])
         ],
         beliefs: {
-          "fact-antidote-storehouse": { propositionId: "fact-antidote-storehouse", stance: "uncertain", confidence: 0, supportingMemoryIds: [], updatedTurn: 0 },
-          "fact-orin-ordered-sera": { propositionId: "fact-orin-ordered-sera", stance: "uncertain", confidence: 0, supportingMemoryIds: [], updatedTurn: 0 },
-          "fact-case-spare-key": { propositionId: "fact-case-spare-key", stance: "believes-true", confidence: 70, supportingMemoryIds: ["mem-start-mara-key"], updatedTurn: 0 }
+          "fact-orin-holds-spare-key": { propositionId: "fact-orin-holds-spare-key", stance: "believes-true", confidence: 100, supportingMemoryIds: ["mem-start-mara-key"], updatedTurn: 0 }
         }
       },
       dain: {
@@ -125,8 +125,7 @@
           memory("mem-start-dain-storehouse", "dain", "Orin asked Dain to keep the Storehouse undisturbed.", "orin")
         ],
         beliefs: {
-          "obs-dain-sera-sighting": { propositionId: "obs-dain-sera-sighting", stance: "believes-true", confidence: 100, supportingMemoryIds: ["mem-start-dain-sera-sighting"], updatedTurn: 0 },
-          "fact-orin-ordered-sera": { propositionId: "fact-orin-ordered-sera", stance: "uncertain", confidence: 0, supportingMemoryIds: [], updatedTurn: 0 }
+          "obs-dain-sera-sighting": { propositionId: "obs-dain-sera-sighting", stance: "believes-true", confidence: 100, supportingMemoryIds: ["mem-start-dain-sera-sighting"], updatedTurn: 0 }
         }
       },
       sera: {
@@ -149,6 +148,7 @@
         ],
         beliefs: {
           "fact-orin-ordered-sera": { propositionId: "fact-orin-ordered-sera", stance: "believes-true", confidence: 100, supportingMemoryIds: ["mem-start-sera-orin-order"], updatedTurn: 0 },
+          "fact-sera-moved-antidote": { propositionId: "fact-sera-moved-antidote", stance: "believes-true", confidence: 100, supportingMemoryIds: ["mem-start-sera-antidote"], updatedTurn: 0 },
           "fact-antidote-storehouse": { propositionId: "fact-antidote-storehouse", stance: "believes-true", confidence: 100, supportingMemoryIds: ["mem-start-sera-antidote"], updatedTurn: 0 },
           "obs-dain-sera-sighting": { propositionId: "obs-dain-sera-sighting", stance: "believes-true", confidence: 100, supportingMemoryIds: ["mem-start-sera-dain-saw"], updatedTurn: 0 }
         }

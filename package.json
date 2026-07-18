@@ -1,10 +1,10 @@
 {
   "name": "forked-fates",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
-  "description": "Forked Fates immutable Recorded Original and authoritative World Engine",
+  "description": "Forked Fates autonomous NPC decisions over an authoritative World Engine",
   "scripts": {
-    "check": "node --check recorded-data.js && node --check app.js && node --check world-scenario.js && node --check world-engine.js",
-    "test": "node --test tests/phase1.test.js tests/world-engine.test.js"
+    "check": "node --check recorded-data.js && node --check app.js && node --check world-scenario.js && node --check world-engine.js && node --check decision-layer.js && node --check npc-agents.js",
+    "test": "node --test tests/phase1.test.js tests/world-engine.test.js tests/autonomous-agents.test.js"
   }
 }
