@@ -9,6 +9,12 @@
   if (!engine) throw new Error("The Decision Layer requires the authoritative World Engine.");
 
   const MAX_RELEVANT_MEMORIES = 6;
+  const PROVIDER_PROTOCOL = "forked-fates-decision-provider-v1";
+  const OUTPUT_CONTRACT = deepFreeze({
+    format: "json-string",
+    cardinality: 1,
+    requiredFields: ["id", "actorId", "action", "chosenAtTurn", "servedGoalId", "rationale", "citedMemoryIds"]
+  });
 
   class AgentOutputError extends Error {
     constructor(kind, actorId, message) {
@@ -227,9 +233,13 @@
     return deepFreeze(deepClone(candidate));
   }
 
-  function decideAndResolveTurn(boundary, agents, options = {}) {
+  function decideAndResolveTurn(boundary, provider, options = {}) {
     const maxAttempts = options.maxAttempts || 3;
     const audit = { turn: boundary.turn + 1, startingBoundary: boundary.turn, attempts: [] };
+
+    if (!provider || provider.protocol !== PROVIDER_PROTOCOL || typeof provider.decide !== "function") {
+      throw new TypeError(`The Decision Layer requires a ${PROVIDER_PROTOCOL} provider.`);
+    }
 
     for (let attemptNumber = 1; attemptNumber <= maxAttempts; attemptNumber += 1) {
       const restored = engine.restoreBoundary(boundary, boundary.turn);
@@ -239,12 +249,16 @@
 
       try {
         for (const actorId of restored.npcOrder) {
-          const agent = agents[actorId];
-          if (!agent || typeof agent.decide !== "function") throw new AgentOutputError("malformed-output", actorId, "No decision agent is available.");
           const projection = createOwnedProjection(restored, actorId);
           let raw;
           try {
-            raw = agent.decide(projection, { attempt: attemptNumber });
+            raw = provider.decide(deepFreeze({
+              protocol: PROVIDER_PROTOCOL,
+              actorId,
+              projection,
+              attempt: attemptNumber,
+              outputContract: OUTPUT_CONTRACT
+            }));
           } catch (error) {
             throw new AgentOutputError("malformed-output", actorId, `Agent execution failed: ${error.message}`);
           }
@@ -278,11 +292,11 @@
     throw new DecisionTurnError(`Turn ${boundary.turn + 1} did not produce four valid agent intents after ${maxAttempts} attempts.`, deepFreeze(deepClone(audit)));
   }
 
-  function runAutonomousOriginal(scenario, agents, options = {}) {
+  function runAutonomousOriginal(scenario, provider, options = {}) {
     let state = engine.createInitialWorld(scenario);
     const turns = [];
     while (state.status !== "completed") {
-      const result = decideAndResolveTurn(state, agents, options);
+      const result = decideAndResolveTurn(state, provider, options);
       state = result.state;
       turns.push({ turn: state.turn, intents: result.intents, audit: result.audit });
     }
@@ -291,6 +305,7 @@
 
   return Object.freeze({
     MAX_RELEVANT_MEMORIES,
+    PROVIDER_PROTOCOL,
     AgentOutputError,
     DecisionTurnError,
     selectRelevantMemories,

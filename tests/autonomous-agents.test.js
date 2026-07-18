@@ -11,6 +11,11 @@ const scenario = require(path.join(root, "world-scenario.js"));
 const engine = require(path.join(root, "world-engine.js"));
 const decision = require(path.join(root, "decision-layer.js"));
 const { createAutonomousAgents } = require(path.join(root, "npc-agents.js"));
+const { DeterministicProvider } = require(path.join(root, "decision-providers.js"));
+
+function provider(agents) {
+  return new DeterministicProvider(agents ? { agents } : {});
+}
 
 function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), "utf8");
@@ -55,7 +60,7 @@ test("Decision Layer is isolated from Recorded and Presentation while depending 
   const recorded = read("recorded-data.js");
   const presentation = `${read("index.html")}\n${read("app.js")}\n${read("styles.css")}`;
   const world = `${read("world-scenario.js")}\n${read("world-engine.js")}`;
-  const agents = `${read("decision-layer.js")}\n${read("npc-agents.js")}`;
+  const agents = `${read("decision-layer.js")}\n${read("decision-providers.js")}\n${read("npc-agents.js")}`;
 
   assert.doesNotMatch(recorded, /decision-layer|npc-agents|FORKED_FATES_DECISION/);
   assert.doesNotMatch(presentation, /decision-layer|npc-agents|FORKED_FATES_DECISION|world-engine|world-scenario/);
@@ -94,7 +99,7 @@ test("Owned-state projections expose only self state, public identities, local o
 });
 
 test("Relevant-memory selection is deterministic, capped at six, owned, available, and smaller than full history", () => {
-  const result = decision.runAutonomousOriginal(scenario, createAutonomousAgents());
+  const result = decision.runAutonomousOriginal(scenario, provider());
   const turnEleven = engine.restoreBoundary(result.state, 11);
 
   for (const npcId of turnEleven.npcOrder) {
@@ -119,7 +124,7 @@ test("Relevant-memory selection is deterministic, capped at six, owned, availabl
 test("Four autonomous NPC agents replay all twelve Original turns without predetermined intent input", () => {
   const autonomousScenario = JSON.parse(JSON.stringify(scenario));
   delete autonomousScenario.originalIntents;
-  const result = decision.runAutonomousOriginal(autonomousScenario, createAutonomousAgents());
+  const result = decision.runAutonomousOriginal(autonomousScenario, provider());
   const recorded = loadRecordedData();
 
   assert.equal(result.state.turn, 12);
@@ -175,8 +180,8 @@ test("Autonomous policies change decisions when supplied owned beliefs change", 
 test("Malformed agent output retries from the frozen boundary and leaves no partial history", () => {
   const base = createAutonomousAgents();
   const initial = engine.createInitialWorld(scenario);
-  const completedTurnOne = decision.decideAndResolveTurn(initial, base).state;
-  const normal = decision.decideAndResolveTurn(completedTurnOne, base);
+  const completedTurnOne = decision.decideAndResolveTurn(initial, provider(base)).state;
+  const normal = decision.decideAndResolveTurn(completedTurnOne, provider(base));
   let seraCalls = 0;
   const agents = Object.assign({}, base, {
     sera: {
@@ -187,7 +192,7 @@ test("Malformed agent output retries from the frozen boundary and leaves no part
       }
     }
   });
-  const retried = decision.decideAndResolveTurn(completedTurnOne, agents, { maxAttempts: 2 });
+  const retried = decision.decideAndResolveTurn(completedTurnOne, provider(agents), { maxAttempts: 2 });
 
   assert.equal(seraCalls, 2);
   assert.equal(retried.audit.attempts.length, 2);
@@ -213,7 +218,7 @@ test("Rejected owned-context output is distinct from malformed output and retrie
       }
     }
   });
-  const result = decision.decideAndResolveTurn(initial, agents, { maxAttempts: 2 });
+  const result = decision.decideAndResolveTurn(initial, provider(agents), { maxAttempts: 2 });
   assert.equal(result.audit.attempts[0].status, "rejected-output");
   assert.match(result.audit.attempts[0].error.message, /outside the supplied relevant set/);
   assert.equal(result.audit.attempts[1].status, "completed");
@@ -234,7 +239,7 @@ test("Output validation prevents an NPC from asserting hidden facts absent from 
       }
     }
   });
-  const result = decision.decideAndResolveTurn(initial, agents, { maxAttempts: 2 });
+  const result = decision.decideAndResolveTurn(initial, provider(agents), { maxAttempts: 2 });
   assert.equal(result.audit.attempts[0].status, "rejected-output");
   assert.match(result.audit.attempts[0].error.message, /without an owned belief and recalled supporting memory/);
   assert.equal(result.audit.attempts[1].status, "completed");
@@ -249,7 +254,7 @@ test("A legal structured intent invalidated during resolution becomes a World fa
     sera: { decide: (projection) => candidate(projection, "sera", "Wait") },
     orin: { decide: (projection) => candidate(projection, "orin", "Move", { targetLocationId: "clinic" }) }
   };
-  const result = decision.decideAndResolveTurn(initial, agents);
+  const result = decision.decideAndResolveTurn(initial, provider(agents));
   const failure = result.state.events.find((event) => event.id === "evt-world-test-dain-t1-communicate-failed");
 
   assert.equal(result.audit.attempts.length, 1);
@@ -266,7 +271,7 @@ test("Exhausted retries report failure while preserving the last completed bound
   const base = createAutonomousAgents();
   const agents = Object.assign({}, base, { mara: { decide: () => "[]" } });
   assert.throws(
-    () => decision.decideAndResolveTurn(initial, agents, { maxAttempts: 2 }),
+    () => decision.decideAndResolveTurn(initial, provider(agents), { maxAttempts: 2 }),
     (error) => {
       assert.equal(error.name, "DecisionTurnError");
       assert.equal(error.audit.attempts.length, 2);
@@ -280,8 +285,8 @@ test("Exhausted retries report failure while preserving the last completed bound
 });
 
 test("Autonomous replay is deterministic and parity-matches Recorded observables at all boundaries", () => {
-  const first = decision.runAutonomousOriginal(scenario, createAutonomousAgents());
-  const second = decision.runAutonomousOriginal(scenario, createAutonomousAgents());
+  const first = decision.runAutonomousOriginal(scenario, provider());
+  const second = decision.runAutonomousOriginal(scenario, provider());
   const recorded = loadRecordedData();
   assert.deepEqual(first, second);
 
