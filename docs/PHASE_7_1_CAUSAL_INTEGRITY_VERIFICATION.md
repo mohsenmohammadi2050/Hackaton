@@ -4,12 +4,26 @@
 
 **World Engine schema:** `1.1.0`
 
-**Timeline integrity schema:** `1.0.0`
+**Timeline integrity schema:** `1.1.0`
+
 **Status:** Complete; awaiting external review
 
 ## Scope control
 
 This checkpoint changes correctness contracts only. It adds no UI, comparison, explanation generation, external LLM transport, persistence, multiple alternates, nested forks, merge, undo, or scenario generalization. Recorded playback remains an independently executable authored artifact.
+
+## External review patch
+
+The first Phase 7.1 external review correctly identified validator false negatives. Runtime state generation was already correct, but validator schema `1.0.0` could accept:
+
+- A same-type `sourceId` that resolved to an unrelated Original record.
+- Self-causes, duplicate causes, causal cycles, and forward cause references.
+- Event or intent citations to memories that existed only in a later turn.
+- An intervention placed at any resolving boundary identity without exact position checks.
+- Invalid boundary ordering and duplicate classifications that still had syntactically valid identities.
+- Outcome attribution to the Branch outcome event itself.
+
+Validator schema `1.1.0` closes these gaps. This review patch changes only `timeline-integrity.js`, its integrity tests, and this verification document. `world-engine.js` and `timeline-fork-engine.js` remain unchanged from checkpoint `081c7a0`, so runtime serialization and story behavior are unaffected.
 
 ## Deterministic hash policy
 
@@ -74,7 +88,7 @@ That value controls category, description, salience, risky-confession trust, and
 
 ### 3. `sourceId` semantics
 
-`sourceId` is now assigned only while cloning an exact frozen prefix record. The normal post-fork resolution path strips candidate source alignment and produces branch-local records without a source link. The integrity validator resolves every non-null source against the type-specific Original identity index.
+`sourceId` is assigned only while cloning an exact frozen prefix record. The normal post-fork resolution path strips candidate source alignment and produces branch-local records without a source link. Validator `1.1.0` derives the copied-prefix event count from the exact Original and Alternate fork boundaries, then checks the deterministic branch-scoping identity transformation for every event, memory, intent, boundary, and outcome source link.
 
 Verified by tests proving:
 
@@ -83,6 +97,9 @@ Verified by tests proving:
 - Every newly generated post-fork intent has no `sourceId`.
 - Two complete Alternate runs produce identical source-alignment projections.
 - A source link aimed at an Original record of the wrong type is rejected.
+- A source link aimed at an unrelated but valid Original record of the same type is rejected.
+- Source-linked records must occur inside the copied prefix and match source turn plus actor or owner.
+- Prefix events, memories, intents, and boundaries require their exact source; post-fork records are forbidden from carrying one.
 
 ### 4. Reusable graph-integrity validation
 
@@ -90,23 +107,26 @@ Verified by tests proving:
 
 The validator verifies:
 
-- Event causes resolve inside the same branch.
+- Event causes resolve inside the same branch, are unique, are not self-references, and occur strictly earlier in authoritative event order.
 - Memory origins resolve.
-- Created and cited memory identities resolve; cited memories belong to the acting NPC.
+- Created and cited memory identities resolve; cited memories belong to the acting NPC and exist before the event or chosen intent boundary.
 - Belief support resolves to memories owned by that NPC.
 - Public-record event references resolve.
 - Alternate event, memory, boundary, intent, and outcome identities are branch-local.
-- Non-null source references resolve to exactly one Original record of the same type.
-- Boundary identities, sequence, classification, event counts, snapshots, and current-state coverage are valid.
-- Intervention placement and consequence references resolve.
-- Completed outcome attribution and the Branch outcome event agree.
+- Non-null source references resolve to the exact deterministic Original prefix record, not merely another record of the same type.
+- Boundary turns, identities, classification cardinality, classification order, strictly increasing event counts, snapshots, and latest-current-state equivalence are valid.
+- Intervention placement resolves to the immediately preceding same-branch, same-turn `initial` or `turn-close` boundary.
+- Intervention consequences follow category-specific World contracts.
+- Completed outcome attribution precedes and agrees with the Branch outcome event and cannot cite that event itself.
 - Original and Alternate share no mutable domain object.
 
-Corruption tests inject invalid causes, origins, created memories, cited memories, belief support, public-record event links, event counts, intervention boundary links, outcome links, wrong-type sources, and shared mutable state. Every corruption is rejected with `TimelineIntegrityError`.
+Corruption tests inject invalid causes, origins, created memories, cited memories, belief support, public-record event links, event counts, intervention boundary links, outcome links, wrong-type sources, unrelated same-type sources, future citations, malformed boundary sequences, and shared mutable state. Every corruption is rejected with `TimelineIntegrityError`.
 
 ### 5. Intervention causality
 
-All three intervention categories now emit authoritative external-root events with `causes: []` and `appliedAtBoundaryId`. Information consequences continue to cite the intervention event through the Memory and belief update event. Item and environmental consequences remain changes on the intervention event itself and continue to use World validation.
+All three intervention categories emit authoritative external-root events with `causes: []` and `appliedAtBoundaryId`. The validator requires the placement boundary to belong to the same branch and turn, be classified `initial` or `turn-close`, and have an event count exactly equal to the intervention's zero-based event position.
+
+Information requires exactly one later Memory and belief update event with both memory and belief changes that cites the intervention. ItemTransfer requires authoritative item changes directly on the intervention event. EnvironmentalEvent requires authoritative location-condition changes directly on the intervention event. Valid frozen sessions for all three categories pass `validateTimelineSession`.
 
 ### 6. Outcome attribution
 
@@ -116,13 +136,15 @@ Each completed outcome stores only structured event identities:
 - `truthEventIds`: responsible-fact establishment events or false-consensus events; the terminal clock is the deterministic unresolved fallback.
 - `socialEventIds`: trust-update and false-consensus events; the terminal clock is the deterministic fallback when neither exists.
 
-The Branch outcome event cites the union. Tests verify every referenced event exists in that branch and is present in the outcome event's causes. No natural-language explanation was added.
+The Branch outcome event cites the union. Tests verify every referenced event exists earlier in that branch, is present in the outcome event's causes, and is not the Branch outcome event itself. Duplicate attribution and causal self-cycles are rejected. No natural-language explanation was added.
 
 ### 7. Boundary semantics
 
 Boundary classification is stored in authoritative boundaries and exposed by timeline boundary indexes. `restoreBoundary(state, turn, classification)` selects an explicit boundary; omitting classification preserves latest-boundary restoration. Restoration now slices boundary history through the selected boundary identity rather than including every later boundary with the same turn number.
 
 A same-turn intervention regression test proves `turn-close` restores the pre-intervention event graph and `post-intervention` restores the intervention and its consequences. Default selection equals `post-intervention`.
+
+Validator `1.1.0` additionally requires monotonically increasing turns, exactly one turn-0 `initial`, at most one `turn-close` and `post-intervention` per turn, immediate base-to-post ordering, strictly increasing event counts, and exact equivalence between the latest boundary snapshot and current authoritative state.
 
 ### 8. Fork eligibility
 
@@ -143,12 +165,34 @@ No change to these files was necessary. `intervention-layer.js` also remains byt
 ## Complete test result
 
 - Syntax checks: all production JavaScript files pass, including `timeline-integrity.js`.
-- Complete suite: **76 passed, 0 failed**.
-- Existing tests preserved: **67 passed**.
-- Phase 7.1 regression and corruption tests added: **9 passed**.
+- Complete suite: **97 passed, 0 failed**.
+- Provisionally approved Phase 7.1 suite preserved: **76 passed**.
+- External-review regression tests added: **21 passed**.
+- Total Phase 7.1 causal-integrity tests: **30 passed**.
 - Recorded observable parity: passed at every Original boundary.
 - Deterministic provider and mock-provider parity: passed against the corrected hash.
 - Original and Alternate deterministic replay: passed.
+- Valid Original, Information Alternate, ItemTransfer Alternate, and EnvironmentalEvent Alternate sessions: passed `validateTimelineSession`.
+- Exact deterministic prefix-source alignment: passed.
+- Strict earlier-event causal graph validation: passed.
+
+The corrected autonomous replay hash remains `6d9dfe9b9f628bf83a4f8fda4d39452260872c978335ddf7caabb9eb44a2501f`. The review patch is validator-only and produces no runtime serialization delta.
+
+## External review artifacts
+
+| File | Review status | SHA-256 |
+|---|---|---|
+| `timeline-integrity.js` | Updated to validator schema `1.1.0` | `78d322ec63178493748c88191f2912758d8f8f1f1c578da9f8413e6b63caae72` |
+| `tests/causal-integrity.test.js` | Updated with 21 focused review regressions | `08b35ac046fd7ad37f66b46bb1e9bf669551e87825688e1480cbb9829a039e62` |
+| `docs/PHASE_7_1_CAUSAL_INTEGRITY_VERIFICATION.md` | Updated review evidence | Recorded by the review-patch commit |
+| `world-engine.js` | Reviewed; unchanged from `081c7a0` | `06122c845a42f4711ddbd997c6c399d56feadad83e062b97376a841bed6d480d` |
+| `timeline-fork-engine.js` | Reviewed; unchanged from `081c7a0` | `544f5ba5f38d7d1d07e4fb01923e1b893d3565b951ee1edcf2c979262c10c96f` |
+
+The focused Git review range begins at provisional checkpoint `081c7a0` and contains only the validator, integrity test, and verification-document changes. The final review command is:
+
+```powershell
+git -c safe.directory=F:/Hackaton diff 081c7a0..HEAD -- timeline-integrity.js tests/causal-integrity.test.js docs/PHASE_7_1_CAUSAL_INTEGRITY_VERIFICATION.md
+```
 
 ## Architectural decisions
 
@@ -158,6 +202,9 @@ No change to these files was necessary. `intervention-layer.js` also remains byt
 4. Source alignment is opt-in only for exact prefix cloning; syntactic ID similarity is never treated as evidence of equivalence.
 5. Integrity validation is a standalone, versioned read-only module so Phase 8 can consume it without moving authority out of the World Engine.
 6. Boundary classification extends the existing snapshot model and keeps latest-boundary restoration backward compatible.
+7. A strict earlier-event invariant replaces a separate cycle traversal because authoritative causes are required to precede effects.
+8. Exact source alignment is validated from deterministic identity transformations and prefix position, not semantic similarity or source existence alone.
+9. Intervention consequence validation follows the authoritative contract for each typed category rather than applying Information requirements universally.
 
 ## Intentional technical debt and remaining risks
 

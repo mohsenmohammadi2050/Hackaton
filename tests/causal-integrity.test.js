@@ -70,11 +70,60 @@ function informationRequest(turn, propositionId = "fact-case-spare-key") {
   };
 }
 
+function itemTransferRequest(turn = 9) {
+  return {
+    id: `integrity-transfer-t${String(turn).padStart(2, "0")}`,
+    category: "ItemTransfer",
+    boundaryTurn: turn,
+    payload: {
+      itemId: "antidote",
+      fromId: "orin",
+      toId: "sera",
+      description: "An external counterfactual transfers Orin's antidote to co-located Sera."
+    }
+  };
+}
+
+function environmentalRequest(turn = 0) {
+  return {
+    id: `integrity-smoke-t${String(turn).padStart(2, "0")}`,
+    category: "EnvironmentalEvent",
+    boundaryTurn: turn,
+    payload: {
+      locationId: "clinic",
+      conditionId: "condition-smoke",
+      conditionState: "active",
+      description: "Smoke fills the Clinic and is directly observable there."
+    }
+  };
+}
+
 function completedSession(forkTurn = 0) {
   let session = timeline.createTimelineSession(timeline.createOriginalTimeline(scenario, provider()));
   session = timeline.forkAlternate(session, { turn: forkTurn });
   session = timeline.applyAlternateIntervention(session, informationRequest(forkTurn));
   return timeline.runAlternate(session, provider());
+}
+
+function forkedSession(turn) {
+  const original = timeline.createOriginalTimeline(scenario, provider());
+  return timeline.forkAlternate(timeline.createTimelineSession(original), { turn });
+}
+
+function intervenedSession(category) {
+  const turn = category === "ItemTransfer" ? 9 : 0;
+  const request = category === "Information"
+    ? informationRequest(turn)
+    : category === "ItemTransfer"
+      ? itemTransferRequest(turn)
+      : environmentalRequest(turn);
+  return timeline.applyAlternateIntervention(forkedSession(turn), request);
+}
+
+let cachedCompletedSession;
+function reviewSession() {
+  if (!cachedCompletedSession) cachedCompletedSession = completedSession(0);
+  return cachedCompletedSession;
 }
 
 function allMemories(state) {
@@ -203,9 +252,167 @@ test("Source alignment is exact for copied prefixes and absent for divergent pos
   assert.equal(integrity.validateTimelineSession(first).valid, true);
 });
 
+test("Exact source validation rejects an Alternate event linked to an unrelated existing Original event", () => {
+  const session = clone(forkedSession(2));
+  session.alternate.state.events[0].sourceId = session.original.state.events[1].id;
+  assert.throws(() => integrity.validateTimelineSession(session), /not the deterministic clone/);
+});
+
+test("Exact source validation rejects an Alternate memory linked to an unrelated existing Original memory", () => {
+  const session = clone(forkedSession(2));
+  const memory = allMemories(session.alternate.state).find((entry) => entry.ownerId === "mara");
+  const unrelated = allMemories(session.original.state).find((entry) => entry.ownerId === "mara" && entry.id !== memory.sourceId);
+  memory.sourceId = unrelated.id;
+  for (const boundary of session.alternate.state.boundaries) {
+    const copy = boundary.world.npcs.mara.memories.find((entry) => entry.id === memory.id);
+    if (copy) copy.sourceId = unrelated.id;
+  }
+  assert.throws(() => integrity.validateTimelineSession(session), /not the deterministic clone/);
+});
+
+test("Exact source validation rejects an Alternate intent linked to another valid Original intent", () => {
+  const session = clone(forkedSession(2));
+  const alternateIntent = session.alternate.turns[0].intents.find((entry) => entry.actorId === "mara");
+  const unrelated = session.original.turns[1].intents.find((entry) => entry.actorId === "mara");
+  alternateIntent.sourceId = unrelated.id;
+  assert.throws(() => integrity.validateTimelineSession(session), /not the deterministic clone/);
+});
+
+test("Exact source validation rejects an Alternate boundary linked to a different Original boundary", () => {
+  const session = clone(forkedSession(2));
+  session.alternate.state.boundaries[0].sourceId = session.original.state.boundaries[1].id;
+  assert.throws(() => integrity.validateTimelineSession(session), /not the deterministic clone/);
+});
+
+test("Causal validation rejects an event that causes itself", () => {
+  const session = clone(reviewSession());
+  const event = session.alternate.state.events.find((entry) => entry.causes.length > 0);
+  event.causes = [event.id];
+  assert.throws(() => integrity.validateTimelineSession(session), /cannot cause itself/);
+});
+
+test("Causal validation rejects a two-event cycle", () => {
+  const session = clone(reviewSession());
+  const first = session.alternate.state.events[1];
+  const second = session.alternate.state.events[2];
+  first.causes = [second.id];
+  second.causes = [first.id];
+  assert.throws(() => integrity.validateTimelineSession(session), /forward causal reference/);
+});
+
+test("Causal validation rejects a forward cause reference", () => {
+  const session = clone(reviewSession());
+  session.alternate.state.events[0].causes = [session.alternate.state.events[1].id];
+  assert.throws(() => integrity.validateTimelineSession(session), /forward causal reference/);
+});
+
+test("Outcome validation rejects attribution to its own Branch outcome event", () => {
+  const session = clone(reviewSession());
+  const state = session.alternate.state;
+  const outcomeEvent = state.events.find((event) => event.category === "Branch outcome");
+  state.outcome.attribution.medicalEventIds[0] = outcomeEvent.id;
+  state.boundaries.at(-1).world.outcome.attribution.medicalEventIds[0] = outcomeEvent.id;
+  assert.throws(() => integrity.validateTimelineSession(session), /cannot attribute itself/);
+});
+
+test("Causal validation rejects duplicate cause identities", () => {
+  const session = clone(reviewSession());
+  const event = session.alternate.state.events.find((entry) => entry.causes.length > 0);
+  event.causes.push(event.causes[0]);
+  assert.throws(() => integrity.validateTimelineSession(session), /duplicate causal predecessors/);
+});
+
+test("Event citation validation rejects a future memory owned by the same actor", () => {
+  const session = clone(reviewSession());
+  const event = session.alternate.state.events.find((entry) => entry.actorId && entry.citedMemoryIds.length > 0);
+  const future = allMemories(session.alternate.state).find((memory) => memory.ownerId === event.actorId && memory.turn > event.turn);
+  assert.ok(future);
+  event.citedMemoryIds[0] = future.id;
+  assert.throws(() => integrity.validateTimelineSession(session), /cites future memory|before it exists/);
+});
+
+test("Intent citation validation rejects a memory created after chosenAtTurn", () => {
+  const session = clone(timeline.createTimelineSession(timeline.createOriginalTimeline(scenario, provider())));
+  const intentRecord = session.original.turns[0].intents.find((entry) => entry.actorId === "mara");
+  const future = allMemories(session.original.state).find((memory) => memory.ownerId === "mara" && memory.turn > intentRecord.chosenAtTurn);
+  assert.ok(future);
+  intentRecord.citedMemoryIds[0] = future.id;
+  assert.throws(() => integrity.validateTimelineSession(session), /cites future memory/);
+});
+
+test("Information, ItemTransfer, and EnvironmentalEvent sessions all satisfy category-aware intervention validation", () => {
+  for (const category of ["Information", "ItemTransfer", "EnvironmentalEvent"]) {
+    const session = intervenedSession(category);
+    assert.equal(integrity.validateTimelineSession(session).valid, true, `${category} session failed validation`);
+  }
+});
+
+test("Intervention placement rejects a post-intervention boundary", () => {
+  const session = clone(intervenedSession("Information"));
+  const event = session.alternate.state.events.find((entry) => entry.external);
+  event.appliedAtBoundaryId = session.alternate.state.boundaries.find((boundary) => boundary.classification === "post-intervention").id;
+  assert.throws(() => integrity.validateTimelineSession(session), /cannot be applied at a post-intervention boundary/);
+});
+
+test("Intervention placement rejects a boundary whose event count is not immediately before the intervention", () => {
+  const session = clone(intervenedSession("Information"));
+  const applied = session.alternate.state.boundaries.find((boundary) => boundary.classification === "initial");
+  applied.eventCount += 1;
+  assert.throws(() => integrity.validateTimelineSession(session), /is not immediately after boundary/);
+});
+
+test("Information intervention validation rejects a missing authoritative memory/belief consequence", () => {
+  const session = clone(intervenedSession("Information"));
+  const event = session.alternate.state.events.find((entry) => entry.external);
+  const consequence = session.alternate.state.events.find((entry) => entry.category === "Memory and belief update" && entry.causes.includes(event.id));
+  consequence.causes = [];
+  assert.throws(() => integrity.validateTimelineSession(session), /requires exactly one memory\/belief consequence/);
+});
+
+test("Boundary validation rejects backward turn ordering", () => {
+  const session = clone(timeline.createTimelineSession(timeline.createOriginalTimeline(scenario, provider())));
+  [session.original.state.boundaries[1], session.original.state.boundaries[2]] = [session.original.state.boundaries[2], session.original.state.boundaries[1]];
+  assert.throws(() => integrity.validateTimelineSession(session), /moves turn order backward/);
+});
+
+test("Boundary validation requires exactly one initial boundary at turn zero", () => {
+  const session = clone(timeline.createTimelineSession(timeline.createOriginalTimeline(scenario, provider())));
+  session.original.state.boundaries[1].classification = "initial";
+  assert.throws(() => integrity.validateTimelineSession(session), /Initial boundary .* must be the first boundary at turn 0|exactly one initial boundary/);
+});
+
+test("Boundary validation rejects duplicate turn-close boundaries", () => {
+  const session = clone(timeline.createTimelineSession(timeline.createOriginalTimeline(scenario, provider())));
+  const duplicate = session.original.state.boundaries[2];
+  duplicate.turn = 1;
+  duplicate.id = "boundary-world-original-v1-t01-s2";
+  duplicate.world.turn = 1;
+  assert.throws(() => integrity.validateTimelineSession(session), /duplicate turn-close boundaries/);
+});
+
+test("Boundary validation requires post-intervention to immediately follow its base boundary", () => {
+  const session = clone(intervenedSession("Information"));
+  const post = session.alternate.state.boundaries.find((boundary) => boundary.classification === "post-intervention");
+  post.id = post.id.replace(/-s2$/, "-s1");
+  session.alternate.state.boundaries = [post];
+  assert.throws(() => integrity.validateTimelineSession(session), /must immediately follow/);
+});
+
+test("Boundary validation rejects a non-advancing event count", () => {
+  const session = clone(timeline.createTimelineSession(timeline.createOriginalTimeline(scenario, provider())));
+  session.original.state.boundaries[1].eventCount = session.original.state.boundaries[0].eventCount;
+  assert.throws(() => integrity.validateTimelineSession(session), /does not advance authoritative event count/);
+});
+
+test("Boundary validation requires the latest boundary to represent current state", () => {
+  const session = clone(timeline.createTimelineSession(timeline.createOriginalTimeline(scenario, provider())));
+  session.original.state.boundaries.at(-1).world.patient.status = "Untreated";
+  assert.throws(() => integrity.validateTimelineSession(session), /does not represent current patient state/);
+});
+
 test("The versioned graph validator accepts valid timelines and rejects corrupted references", () => {
   const valid = completedSession(0);
-  assert.equal(integrity.INTEGRITY_SCHEMA_VERSION, "1.0.0");
+  assert.equal(integrity.INTEGRITY_SCHEMA_VERSION, "1.1.0");
   assert.equal(integrity.validateTimelineSession(valid).valid, true);
 
   const corruptions = [
@@ -228,6 +435,7 @@ test("The versioned graph validator accepts valid timelines and rejects corrupte
 
   const shared = clone(valid);
   shared.alternate.state.npcs.mara.trust = shared.original.state.npcs.mara.trust;
+  shared.alternate.state.boundaries.at(-1).world.npcs.mara.trust = shared.original.state.npcs.mara.trust;
   assert.throws(() => integrity.validateTimelineSession(shared), /share a mutable object/);
 });
 
