@@ -1,8 +1,8 @@
 {
   "name": "forked-fates",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Forked Fates Phase 1 Recorded walking skeleton",
+  "description": "Forked Fates complete Recorded Original",
   "scripts": {
     "check": "node --check recorded-data.js && node --check app.js",
     "test": "node --test tests/phase1.test.js"

@@ -6,15 +6,18 @@
   const announcer = document.getElementById("announcer");
 
   if (!data || !app) {
-    throw new Error("Forked Fates Phase 1 data failed to load.");
+    throw new Error("Forked Fates Recorded data failed to load.");
   }
 
   const state = {
     screen: "start",
     currentTurn: 0,
     selectedTurn: 0,
+    isRunning: false,
     selection: { type: "event", id: "evt-shared-t00-start" }
   };
+
+  let runTimer = null;
 
   const characterEntries = Object.entries(data.characters);
   const locationEntries = Object.entries(data.locations);
@@ -66,7 +69,7 @@
               <span class="record-dot" aria-hidden="true"></span> Watch recorded demonstration
             </button>
           </div>
-          <p class="build-note">Phase 1 · one-turn Recorded preview</p>
+          <p class="build-note">Phase 2 · complete Recorded Original</p>
         </div>
         <aside class="start-art" aria-label="The Last Antidote scenario motif">
           <div class="vial-glow" aria-hidden="true">
@@ -131,7 +134,10 @@
 
   function renderWorkspace() {
     const snapshot = data.snapshots[state.selectedTurn];
+    const currentSnapshot = data.snapshots[state.currentTurn];
     const isHistorical = state.selectedTurn !== state.currentTurn;
+    const branchComplete = state.currentTurn === data.originalOutcome.turn;
+    const patientLost = currentSnapshot.patient.startsWith("Lost");
 
     app.innerHTML = `
       <section class="workspace" aria-labelledby="workspace-title">
@@ -145,8 +151,8 @@
           </div>
           <div class="status-strip" aria-label="Current branch status">
             <div class="status-cell"><span>Branch</span><strong>Original</strong></div>
-            <div class="status-cell"><span>Current turn</span><strong>${state.currentTurn} <small>/ 12</small></strong></div>
-            <div class="status-cell status-patient"><span>Patient</span><strong><i aria-hidden="true"></i> Untreated</strong></div>
+            <div class="status-cell"><span>Current turn</span><strong>${state.currentTurn} <small>/ 12 · ${currentSnapshot.turnsRemaining} remain</small></strong></div>
+            <div class="status-cell status-patient ${patientLost ? "status-lost" : ""}"><span>Patient</span><strong><i aria-hidden="true"></i> ${patientLost ? "Lost" : "Untreated"}</strong></div>
             <div class="mode-pill mode-pill-strong"><span class="record-dot" aria-hidden="true"></span> Recorded</div>
           </div>
           <button class="icon-button" type="button" data-action="restart" title="Restart recorded session" aria-label="Restart recorded session">↻</button>
@@ -159,7 +165,7 @@
                 <p class="section-kicker">World view</p>
                 <h2 id="world-title">Turn ${state.selectedTurn} boundary</h2>
               </div>
-              <div class="activity-state"><span aria-hidden="true"></span>${escapeHtml(snapshot.activity)}</div>
+              <div class="activity-state ${state.isRunning ? "is-running" : ""}"><span aria-hidden="true"></span>${state.isRunning ? "Recorded playback running" : escapeHtml(snapshot.activity)}</div>
             </div>
             ${isHistorical ? `<div class="historical-banner"><strong>Reviewing turn ${state.selectedTurn}</strong><span>Current branch remains at turn ${state.currentTurn}.</span></div>` : ""}
             <div class="world-map">${renderLocations(snapshot)}</div>
@@ -169,7 +175,7 @@
               <span class="legend-chip belief">Belief</span>
               <span class="legend-chip memory">Memory</span>
             </div>
-            ${renderOutcomePreview()}
+            ${branchComplete ? renderCompletedOutcome() : renderOutcomePreview()}
           </section>
 
           <section class="timeline-column" aria-labelledby="timeline-title">
@@ -181,15 +187,7 @@
               <span class="turn-count">${state.currentTurn + 1} boundaries</span>
             </div>
             <div class="timeline" aria-label="Recorded timeline">${renderTimeline()}</div>
-            <div class="step-control">
-              <div>
-                <span>Recorded segment</span>
-                <strong>${state.currentTurn === 0 ? "Ready to resolve turn 1" : "Turn 1 complete"}</strong>
-              </div>
-              <button class="button button-step" type="button" data-action="step" ${state.currentTurn >= 1 ? "disabled" : ""}>
-                ${state.currentTurn >= 1 ? "Preview complete" : "Step one turn"} <span aria-hidden="true">${state.currentTurn >= 1 ? "✓" : "→"}</span>
-              </button>
-            </div>
+            ${renderPlaybackControls(branchComplete)}
           </section>
 
           <aside class="inspector-column" aria-labelledby="inspector-title">
@@ -225,12 +223,13 @@
 
   function renderNpcToken(id, locationId) {
     const npc = data.characters[id];
+    const npcState = npcStateAt(id, state.selectedTurn);
     const selected = state.selection.type === "npc" && state.selection.id === id;
     return `
       <button class="npc-token ${selected ? "is-selected" : ""}" type="button" data-action="select-npc" data-npc="${escapeHtml(id)}" aria-label="Inspect ${escapeHtml(npc.name)}, ${escapeHtml(npc.role)}, at ${escapeHtml(data.locations[locationId].name)}">
         <span class="portrait portrait-small portrait-${escapeHtml(npc.color)}" aria-hidden="true">${escapeHtml(npc.initials)}</span>
         <span><strong>${escapeHtml(npc.shortName)}</strong><small>${escapeHtml(npc.role)}</small></span>
-        <span class="posture-dot" title="${escapeHtml(npc.posture)} posture" aria-label="${escapeHtml(npc.posture)} posture"></span>
+        <span class="posture-dot" title="${escapeHtml(npcState.posture)} posture" aria-label="${escapeHtml(npcState.posture)} posture"></span>
       </button>
     `;
   }
@@ -243,7 +242,7 @@
         <section class="turn-group ${state.selectedTurn === turn ? "is-selected-turn" : ""}">
           <button class="turn-header" type="button" data-action="select-turn" data-turn="${turn}" aria-label="Review completed turn ${turn}">
             <span class="turn-node" aria-hidden="true"></span>
-            <span><strong>Turn ${turn}</strong><small>${turn === 0 ? "Starting boundary" : "Complete · 11 turns remain"}</small></span>
+            <span><strong>Turn ${turn}</strong><small>${turn === 0 ? "Starting boundary" : `Complete · ${data.snapshots[turn].turnsRemaining} turn${data.snapshots[turn].turnsRemaining === 1 ? "" : "s"} remain`}</small></span>
             <span class="turn-status">${state.selectedTurn === turn ? "Viewing" : "View"}</span>
           </button>
           <div class="event-list">
@@ -258,11 +257,12 @@
   function renderTimelineEvent(event) {
     const actor = event.actor ? data.characters[event.actor] : null;
     const selected = state.selection.type === "event" && state.selection.id === event.id;
+    const showPivotal = state.currentTurn === data.originalOutcome.turn && event.pivotal;
     return `
-      <button class="event-card event-${escapeHtml(event.tone)} ${selected ? "is-selected" : ""}" type="button" data-action="select-event" data-event="${escapeHtml(event.id)}">
+      <button class="event-card event-${escapeHtml(event.tone)} ${selected ? "is-selected" : ""} ${showPivotal ? "is-pivotal" : ""}" type="button" data-action="select-event" data-event="${escapeHtml(event.id)}">
         <span class="event-icon" aria-hidden="true">${event.tone === "fact" ? "◇" : event.tone === "claim" ? "“" : "⌁"}</span>
         <span class="event-copy">
-          <span class="event-meta">${escapeHtml(event.category)} · ${escapeHtml(event.visibility)}</span>
+          <span class="event-meta">${escapeHtml(event.category)} · ${escapeHtml(event.visibility)}${showPivotal ? " · Pivotal" : ""}</span>
           <strong>${escapeHtml(event.summary)}</strong>
           <small>${actor ? `${escapeHtml(actor.name)} · ` : ""}${escapeHtml(event.location)}</small>
         </span>
@@ -281,11 +281,12 @@
 
   function renderNpcInspector(id) {
     const npc = data.characters[id];
+    const npcState = npcStateAt(id, state.selectedTurn);
     const locationId = Object.entries(data.snapshots[state.selectedTurn].locations).find(([, ids]) => ids.includes(id))?.[0];
     const beliefs = npc.beliefs.filter((belief) => belief.turn <= state.selectedTurn);
     const memories = npc.memories.filter((memory) => memory.turn <= state.selectedTurn);
     const relevantMemories = memories.slice(-6).reverse();
-    const trustRows = Object.entries(npc.trust).map(([targetId, value]) => {
+    const trustRows = Object.entries(npcState.trust).map(([targetId, value]) => {
       const tone = value >= 25 ? "trusted" : value <= -25 ? "distrusted" : "neutral";
       return `<li><span>${escapeHtml(characterName(targetId))}</span><span class="trust-value trust-${tone}">${value > 0 ? "+" : ""}${value} · ${tone}</span></li>`;
     }).join("");
@@ -299,13 +300,13 @@
         <span class="portrait portrait-${escapeHtml(npc.color)}" aria-hidden="true">${escapeHtml(npc.initials)}</span>
       </div>
       <div class="identity-line">
-        <span>${escapeHtml(npc.role)}</span><span>${escapeHtml(data.locations[locationId].name)}</span><span>${escapeHtml(npc.posture)}</span>
+        <span>${escapeHtml(npc.role)}</span><span>${escapeHtml(data.locations[locationId].name)}</span><span>${escapeHtml(npcState.posture)}</span>
       </div>
       <div class="inspector-scroll">
         <section class="inspector-section">
           <h3>Starting character definition</h3>
           <div class="trait-list">${npc.traits.map((trait) => `<span>${escapeHtml(trait)}</span>`).join("")}</div>
-          <p class="item-line"><span>Possessed item</span><strong>${escapeHtml(npc.item)}</strong></p>
+          <p class="item-line"><span>Possessed item</span><strong>${escapeHtml(npcState.item)}</strong></p>
         </section>
         <section class="inspector-section">
           <h3>Goals</h3>
@@ -415,6 +416,86 @@
     `;
   }
 
+  function renderCompletedOutcome() {
+    const outcome = data.originalOutcome;
+    const labels = Object.entries(outcome.labels).map(([dimension, result]) => `
+      <div class="outcome-result outcome-${escapeHtml(result.label.toLowerCase())}">
+        <dt>${escapeHtml(dimension)}</dt>
+        <dd>${escapeHtml(result.label)}</dd>
+        <p>${escapeHtml(result.explanation)}</p>
+      </div>
+    `).join("");
+    const pivotal = outcome.pivotalEvents.map((eventId) => {
+      const event = data.events.find((item) => item.id === eventId);
+      return `
+        <button class="pivotal-link" type="button" data-action="select-event" data-event="${escapeHtml(eventId)}">
+          <span>Turn ${event.turn}</span><strong>${escapeHtml(event.summary)}</strong><i aria-hidden="true">↗</i>
+        </button>
+      `;
+    }).join("");
+
+    return `
+      <section class="completed-outcome" aria-labelledby="completed-outcome-title">
+        <header>
+          <div>
+            <p class="section-kicker">Original outcome</p>
+            <h2 id="completed-outcome-title">Night falls before the antidote arrives</h2>
+          </div>
+          <span class="outcome-complete-mark">Branch complete</span>
+        </header>
+        <dl class="outcome-results">${labels}</dl>
+        <p class="outcome-recap">${escapeHtml(outcome.recap)}</p>
+        <div class="outcome-evidence">
+          <section>
+            <h3>Antidote path</h3>
+            <ol>${outcome.antidotePath.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol>
+          </section>
+          <section>
+            <h3>Pivotal events</h3>
+            <div class="pivotal-list">${pivotal}</div>
+          </section>
+        </div>
+      </section>
+    `;
+  }
+
+  function renderPlaybackControls(branchComplete) {
+    const nextTurn = Math.min(state.currentTurn + 1, data.originalOutcome.turn);
+    const status = branchComplete
+      ? "Original outcome recorded"
+      : state.isRunning
+        ? `Advancing toward turn ${nextTurn}`
+        : state.currentTurn === 0
+          ? "Ready to resolve turn 1"
+          : `Turn ${state.currentTurn} complete · next boundary ready`;
+
+    return `
+      <div class="playback-control">
+        <div class="playback-status">
+          <span>Recorded Original</span>
+          <strong>${escapeHtml(status)}</strong>
+        </div>
+        <div class="playback-buttons" role="group" aria-label="Recorded playback controls">
+          <button class="button button-compact" type="button" data-action="step" ${state.isRunning || branchComplete ? "disabled" : ""}>Step <span aria-hidden="true">→</span></button>
+          <button class="button button-compact button-run" type="button" data-action="run" ${state.isRunning || branchComplete ? "disabled" : ""}>Run <span aria-hidden="true">▶</span></button>
+          <button class="button button-compact button-pause" type="button" data-action="pause" ${state.isRunning ? "" : "disabled"}>Pause <span aria-hidden="true">Ⅱ</span></button>
+        </div>
+      </div>
+    `;
+  }
+
+  function npcStateAt(id, turn) {
+    const npc = data.characters[id];
+    const result = { item: npc.item, posture: npc.posture, trust: Object.assign({}, npc.trust) };
+    for (const entry of npc.history || []) {
+      if (entry.turn > turn) break;
+      if (entry.item !== undefined) result.item = entry.item;
+      if (entry.posture !== undefined) result.posture = entry.posture;
+      if (entry.trust !== undefined) result.trust = Object.assign({}, entry.trust);
+    }
+    return result;
+  }
+
   function findMemory(memoryId) {
     for (const [, npc] of characterEntries) {
       const memory = npc.memories.find((item) => item.id === memoryId);
@@ -424,20 +505,83 @@
   }
 
   function restartSession() {
+    stopRunTimer();
     state.currentTurn = 0;
     state.selectedTurn = 0;
+    state.isRunning = false;
     state.selection = { type: "event", id: "evt-shared-t00-start" };
     renderWorkspace();
     announce("Recorded session restarted at turn zero.");
   }
 
   function stepTurn() {
-    if (state.currentTurn >= 1) return;
-    state.currentTurn = 1;
-    state.selectedTurn = 1;
-    state.selection = { type: "event", id: "evt-shared-t01-mara-key" };
+    if (state.isRunning || state.currentTurn >= data.originalOutcome.turn) return;
+    advanceRecordedTurn(true);
+  }
+
+  function advanceRecordedTurn(shouldAnnounce) {
+    if (state.currentTurn >= data.originalOutcome.turn) {
+      state.isRunning = false;
+      stopRunTimer();
+      renderWorkspace();
+      return;
+    }
+
+    state.currentTurn += 1;
+    state.selectedTurn = state.currentTurn;
+    const firstEvent = data.events.find((item) => item.turn === state.currentTurn);
+    state.selection = { type: "event", id: firstEvent.id };
+
+    if (state.currentTurn === data.originalOutcome.turn) {
+      state.isRunning = false;
+      stopRunTimer();
+    }
+
     renderWorkspace();
-    announce("Turn one complete. Eleven turns remain. Mara discovered spare-key evidence.");
+    if (shouldAnnounce) {
+      const snapshot = data.snapshots[state.currentTurn];
+      announce(state.currentTurn === data.originalOutcome.turn
+        ? "Original branch complete. Niko is lost. The truth is exposed and the group is fractured."
+        : `Turn ${state.currentTurn} complete. ${snapshot.turnsRemaining} turns remain.`);
+    }
+  }
+
+  function startRun() {
+    if (state.isRunning || state.currentTurn >= data.originalOutcome.turn) return;
+    state.isRunning = true;
+    renderWorkspace();
+    announce(`Recorded playback running from completed turn ${state.currentTurn}.`);
+    scheduleNextRecordedTurn();
+  }
+
+  function scheduleNextRecordedTurn() {
+    stopRunTimer();
+    if (!state.isRunning || state.currentTurn >= data.originalOutcome.turn) return;
+    runTimer = window.setTimeout(() => {
+      runTimer = null;
+      if (!state.isRunning) return;
+      advanceRecordedTurn(false);
+      if (state.isRunning) {
+        scheduleNextRecordedTurn();
+      } else if (state.currentTurn === data.originalOutcome.turn) {
+        announce("Recorded Original complete. Lost, Exposed, Fractured.");
+      }
+    }, 520);
+  }
+
+  function pauseRun() {
+    if (!state.isRunning) return;
+    state.isRunning = false;
+    stopRunTimer();
+    renderWorkspace();
+    announce(`Recorded playback paused at completed turn ${state.currentTurn}.`);
+  }
+
+  function stopRunTimer() {
+    if (runTimer !== null) {
+      window.clearTimeout(runTimer);
+      runTimer = null;
+    }
   }
 
   app.addEventListener("click", (event) => {
@@ -468,6 +612,14 @@
     }
     if (action === "step") {
       stepTurn();
+      return;
+    }
+    if (action === "run") {
+      startRun();
+      return;
+    }
+    if (action === "pause") {
+      pauseRun();
       return;
     }
     if (action === "select-npc") {

@@ -21,8 +21,10 @@ function loadRecordedData() {
 
 const data = loadRecordedData();
 
-function createAppHarness() {
+function createAppHarness(options = {}) {
   let clickHandler = null;
+  let timerId = 0;
+  const queuedTimers = [];
   const appNode = {
     innerHTML: "",
     addEventListener(type, handler) {
@@ -41,8 +43,18 @@ function createAppHarness() {
   };
   const window = {
     FORKED_FATES_PHASE1: data,
-    setTimeout(callback) {
-      callback();
+    setTimeout(callback, delay = 0) {
+      timerId += 1;
+      if (options.queuePlayback && delay > 20) {
+        queuedTimers.push({ id: timerId, callback });
+      } else {
+        callback();
+      }
+      return timerId;
+    },
+    clearTimeout(id) {
+      const index = queuedTimers.findIndex((timer) => timer.id === id);
+      if (index >= 0) queuedTimers.splice(index, 1);
     }
   };
   const context = { document, window };
@@ -55,6 +67,14 @@ function createAppHarness() {
     },
     announcement() {
       return announcer.textContent;
+    },
+    flushNextPlaybackTimer() {
+      const timer = queuedTimers.shift();
+      assert.ok(timer, "no queued playback timer available");
+      timer.callback();
+    },
+    pendingPlaybackTimers() {
+      return queuedTimers.length;
     },
     click(action, dataset = {}) {
       assert.ok(clickHandler, "application click handler was not registered");
@@ -72,7 +92,7 @@ function createAppHarness() {
 test("Recorded slice contains the exact Phase 1 world shape", () => {
   assert.equal(Object.keys(data.characters).length, 4);
   assert.equal(Object.keys(data.locations).length, 3);
-  assert.deepEqual(Object.keys(data.snapshots), ["0", "1"]);
+  assert.deepEqual(Object.keys(data.snapshots).slice(0, 2), ["0", "1"]);
   assert.equal(data.snapshots[0].turnsRemaining, 12);
   assert.equal(data.snapshots[1].turnsRemaining, 11);
   assert.match(data.snapshots[0].patient, /Untreated/);
@@ -91,11 +111,25 @@ test("Briefing-facing content does not reveal the hidden causal chain", () => {
 });
 
 test("Turn 1 is one complete Recorded intent per NPC", () => {
-  const turnOne = data.events.filter((event) => event.turn === 1);
+  const turnOne = data.events.filter((event) => event.turn === 1 && event.action);
   assert.equal(turnOne.length, 4);
   assert.deepEqual(Array.from(turnOne, (event) => event.actor).sort(), ["dain", "mara", "orin", "sera"]);
   assert.deepEqual(Array.from(turnOne, (event) => event.order), [1, 2, 3, 4]);
   assert.ok(turnOne.every((event) => event.rationale && event.goal));
+});
+
+test("Every Recorded action creates a memory for its actor", () => {
+  const memoryOwners = new Map();
+  for (const [characterId, character] of Object.entries(data.characters)) {
+    for (const memory of character.memories) memoryOwners.set(memory.id, characterId);
+  }
+
+  for (const event of data.events.filter((candidate) => candidate.action)) {
+    assert.ok(
+      event.createdMemories.some((memoryId) => memoryOwners.get(memoryId) === event.actor),
+      `${event.id} does not create a memory for ${event.actor}`
+    );
+  }
 });
 
 test("Every cited and created memory exists at an allowed turn", () => {
@@ -158,7 +192,7 @@ test("Information types and the Recorded mode are visibly distinguished", () => 
   assert.match(appSource, /slice\(-6\)/);
 });
 
-test("Navigation, inspection, Step, and Restart are present without Phase 2 controls", () => {
+test("Phase 1 navigation and inspection remain while later-phase controls stay excluded", () => {
   const appSource = read("app.js");
   for (const action of [
     "open-briefing",
@@ -172,9 +206,9 @@ test("Navigation, inspection, Step, and Restart are present without Phase 2 cont
     assert.match(appSource, new RegExp(`data-action=\\"${action}\\"|action === \\"${action}\\"`));
   }
 
-  assert.doesNotMatch(appSource, /data-action="run"/);
-  assert.doesNotMatch(appSource, /data-action="pause"/);
   assert.doesNotMatch(appSource, /data-action="fork"/);
+  assert.doesNotMatch(appSource, /data-action="compare"/);
+  assert.doesNotMatch(appSource, /data-action="reveal-truth"/);
   assert.match(appSource, /state\.currentTurn = 0/);
   assert.match(appSource, /state\.selection = \{ type: "event", id: "evt-shared-t00-start" \}/);
 });
@@ -213,7 +247,7 @@ test("The real application script completes the Phase 1 navigation journey", () 
   harness.click("step");
   assert.match(harness.html(), /Turn 1 boundary/);
   assert.match(harness.html(), /Mara finds spare-key marks/);
-  assert.match(harness.announcement(), /Turn one complete/);
+  assert.match(harness.announcement(), /Turn (?:one|1) complete/);
 
   harness.click("select-npc", { npc: "mara" });
   assert.match(harness.html(), /NPC inspector/);
@@ -243,4 +277,158 @@ test("Timeline review does not advance time and Restart restores turn zero", () 
   assert.match(harness.html(), /Ready to resolve turn 1/);
   assert.doesNotMatch(harness.html(), /Mara finds spare-key marks/);
   assert.match(harness.announcement(), /restarted at turn zero/i);
+});
+
+test("Recorded Original contains twelve complete authored turns and stable outcomes", () => {
+  assert.deepEqual(Object.keys(data.snapshots), Array.from({ length: 13 }, (_, turn) => String(turn)));
+  for (let turn = 0; turn <= 12; turn += 1) {
+    assert.equal(data.snapshots[turn].turnsRemaining, 12 - turn);
+  }
+
+  const legalActions = new Set(["Move", "Investigate", "Communicate", "Transfer", "Administer", "Accuse", "Wait"]);
+  for (let turn = 1; turn <= 12; turn += 1) {
+    const intents = data.events.filter((event) => event.turn === turn && event.action !== null);
+    assert.equal(intents.length, 4, `turn ${turn} must contain four NPC intents`);
+    assert.equal(new Set(Array.from(intents, (event) => event.actor)).size, 4, `turn ${turn} repeats an actor`);
+    assert.ok(intents.every((event) => legalActions.has(event.action)), `turn ${turn} contains an illegal action family`);
+  }
+
+  assert.equal(data.originalOutcome.id, "outcome-original-v1");
+  assert.equal(data.originalOutcome.labels.medical.id, "outcome-original-medical-lost");
+  assert.equal(data.originalOutcome.labels.truth.id, "outcome-original-truth-exposed");
+  assert.equal(data.originalOutcome.labels.social.id, "outcome-original-social-fractured");
+  assert.deepEqual(
+    Array.from(data.originalOutcome.pivotalEvents),
+    ["evt-orig-t04-orin-move-storehouse", "evt-orig-t05-orin-find-antidote", "evt-orig-t11-sera-confession"]
+  );
+});
+
+test("Event history is append-only ordered data with unique stable identities", () => {
+  const eventIds = Array.from(data.events, (event) => event.id);
+  assert.equal(new Set(eventIds).size, eventIds.length);
+  assert.ok(data.events.every(Object.isFrozen));
+
+  for (let turn = 0; turn <= 12; turn += 1) {
+    const events = data.events.filter((event) => event.turn === turn);
+    assert.ok(events.length > 0, `turn ${turn} has no events`);
+    const expectedOrder = Array.from({ length: events.length }, (_, index) => turn === 0 ? index : index + 1);
+    assert.deepEqual(Array.from(events, (event) => event.order), expectedOrder);
+  }
+
+  assert.ok(data.events.find((event) => event.id === "evt-orig-t12-outcome"));
+});
+
+test("Recorded locations, possession, trust, and final outcome remain consistent", () => {
+  assert.deepEqual(Array.from(data.snapshots[4].locations.storehouse), ["orin"]);
+  assert.deepEqual(Array.from(data.snapshots[6].locations.storehouse), ["sera"]);
+  assert.deepEqual(Array.from(data.snapshots[10].locations.storehouse).sort(), ["dain", "orin"]);
+  assert.deepEqual(Array.from(data.snapshots[12].locations.square).sort(), ["dain", "orin"]);
+
+  const orinAtFive = data.characters.orin.history.find((entry) => entry.turn === 5);
+  assert.match(orinAtFive.item, /Antidote/);
+  const maraAtEleven = data.characters.mara.history.find((entry) => entry.turn === 11);
+  assert.equal(maraAtEleven.trust.orin, -65);
+  assert.equal(maraAtEleven.trust.sera, 25);
+  assert.match(data.snapshots[12].patient, /Lost/);
+  assert.deepEqual(Array.from(data.originalOutcome.antidotePath), [
+    "Storehouse · turns 0–4",
+    "Orin takes possession · turn 5",
+    "Still held by Orin · turn 12"
+  ]);
+});
+
+test("Every snapshot clock, location, patient, item, and trust change is event-backed", () => {
+  const locationOf = (snapshot, characterId) => Object.entries(snapshot.locations)
+    .find(([, occupants]) => occupants.includes(characterId))?.[0];
+
+  for (let turn = 1; turn <= 12; turn += 1) {
+    const previous = data.snapshots[turn - 1];
+    const current = data.snapshots[turn];
+    const turnEvents = data.events.filter((event) => event.turn === turn);
+
+    assert.ok(
+      turnEvents.some((event) => event.category === "Clock update" && event.changes.some((change) => change.includes(String(current.turnsRemaining)))),
+      `turn ${turn} clock is not event-backed`
+    );
+
+    for (const characterId of Object.keys(data.characters)) {
+      if (locationOf(previous, characterId) === locationOf(current, characterId)) continue;
+      assert.ok(
+        turnEvents.some((event) => event.actor === characterId && event.action === "Move" && event.changes.some((change) => change.includes("location:"))),
+        `turn ${turn} location change for ${characterId} is not event-backed`
+      );
+    }
+
+    if (previous.patient !== current.patient) {
+      assert.ok(turnEvents.some((event) => event.changes.some((change) => change.startsWith("Patient:"))));
+    }
+  }
+
+  assert.ok(data.events.some((event) => event.turn === 5 && event.changes.some((change) => /Antidote.*Orin|Orin.*Antidote/i.test(change))));
+
+  for (const [characterId, character] of Object.entries(data.characters)) {
+    for (const historyEntry of character.history.filter((entry) => entry.turn > 0 && entry.trust)) {
+      assert.ok(
+        data.events.some((event) => event.turn === historyEntry.turn && event.category === "Trust update"),
+        `turn ${historyEntry.turn} trust change for ${characterId} is not event-backed`
+      );
+    }
+  }
+});
+
+test("Step advances exactly one complete turn through the full Recorded branch", () => {
+  const harness = createAppHarness();
+  harness.click("open-briefing");
+  harness.click("enter-world");
+
+  harness.click("step");
+  assert.match(harness.html(), /Turn 1 boundary/);
+  assert.doesNotMatch(harness.html(), /Turn 2 boundary/);
+  harness.click("step");
+  assert.match(harness.html(), /Turn 2 boundary/);
+  assert.match(harness.html(), /Mara moves to the Village Square/);
+});
+
+test("Run reaches the complete Original outcome and stops automatically", () => {
+  const harness = createAppHarness();
+  harness.click("open-briefing");
+  harness.click("enter-world");
+  harness.click("run");
+
+  assert.match(harness.html(), /Current turn<\/span><strong>12/);
+  assert.match(harness.html(), /Branch complete/);
+  assert.match(harness.html(), />Lost</);
+  assert.match(harness.html(), />Exposed</);
+  assert.match(harness.html(), />Fractured</);
+  assert.match(harness.html(), /Original outcome recorded/);
+});
+
+test("Pause stops playback only at a completed boundary", () => {
+  const harness = createAppHarness({ queuePlayback: true });
+  harness.click("open-briefing");
+  harness.click("enter-world");
+  harness.click("run");
+  assert.equal(harness.pendingPlaybackTimers(), 1);
+
+  harness.flushNextPlaybackTimer();
+  assert.match(harness.html(), /Current turn<\/span><strong>1/);
+  assert.equal(harness.pendingPlaybackTimers(), 1);
+  harness.click("pause");
+
+  assert.equal(harness.pendingPlaybackTimers(), 0);
+  assert.match(harness.html(), /Turn 1 complete · next boundary ready/);
+  assert.match(harness.announcement(), /paused at completed turn 1/i);
+});
+
+test("Restart after outcome reproduces the Phase 1 turn-zero checkpoint", () => {
+  const harness = createAppHarness();
+  harness.click("open-briefing");
+  harness.click("enter-world");
+  harness.click("run");
+  harness.click("restart");
+
+  assert.match(harness.html(), /Turn 0 boundary/);
+  assert.match(harness.html(), /Ready to resolve turn 1/);
+  assert.doesNotMatch(harness.html(), /Branch complete/);
+  assert.doesNotMatch(harness.html(), /Turn 1 complete/);
 });
