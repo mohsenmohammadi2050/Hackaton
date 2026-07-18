@@ -7,7 +7,8 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function createWorldEngineApi() {
   "use strict";
 
-  const ENGINE_VERSION = "1.0.0";
+  const ENGINE_VERSION = "1.1.0";
+  const BOUNDARY_CLASSIFICATIONS = Object.freeze(["initial", "turn-close", "post-intervention"]);
   const ACTIONS = Object.freeze(["Move", "Investigate", "Communicate", "Transfer", "Administer", "Accuse", "Wait"]);
   const INTERVENTION_PROTOCOL = "forked-fates-intervention-v1";
   const INTERVENTION_EVENT_TYPES = Object.freeze({
@@ -76,16 +77,18 @@
     return `outcome-${namespace}--${id.replace(/^outcome-/, "")}`;
   }
 
-  function scopeIntentForState(state, intent) {
+  function scopeIntentForState(state, intent, alignment = {}) {
     if (!state.identityNamespace) return intent;
     const scoped = deepClone(intent);
-    scoped.sourceId = intent.sourceId || intent.id;
+    delete scoped.sourceId;
+    if (alignment.sourceId) scoped.sourceId = alignment.sourceId;
     scoped.id = scopeIntentId(state.identityNamespace, intent.id);
     scoped.citedMemoryIds = (intent.citedMemoryIds || []).map((id) => scopeMemoryId(state.identityNamespace, id));
     return scoped;
   }
 
-  function captureBoundary(state) {
+  function captureBoundary(state, classification) {
+    invariant(BOUNDARY_CLASSIFICATIONS.includes(classification), `Unsupported boundary classification ${classification}.`);
     const world = {};
     for (const key of [
       "engineVersion", "scenarioId", "scenarioVersion", "branchId", "deadline", "npcOrder",
@@ -97,11 +100,15 @@
     for (const key of ["identityNamespace", "sourceBranchId", "forkTurn"]) {
       if (state[key] !== undefined) world[key] = deepClone(state[key]);
     }
-    const boundary = { turn: state.turn, eventCount: state.events.length, world };
-    if (state.identityNamespace) {
-      const sequence = state.boundaries.filter((candidate) => candidate.turn === state.turn).length + 1;
-      boundary.id = `boundary-${state.identityNamespace}-t${padTurn(state.turn)}-s${sequence}`;
-    }
+    const sequence = state.boundaries.filter((candidate) => candidate.turn === state.turn).length + 1;
+    const boundaryNamespace = state.identityNamespace || state.branchId;
+    const boundary = {
+      id: `boundary-${boundaryNamespace}-t${padTurn(state.turn)}-s${sequence}`,
+      turn: state.turn,
+      eventCount: state.events.length,
+      classification,
+      world
+    };
     return boundary;
   }
 
@@ -163,7 +170,7 @@
       changes: { clock: [state.deadline], patient: [state.patient.status] },
       causes: []
     });
-    state.boundaries.push(captureBoundary(state));
+    state.boundaries.push(captureBoundary(state, "initial"));
     return deepFreeze(state);
   }
 
@@ -405,7 +412,7 @@
     }
   }
 
-  function recordPublicStatements(state, event, intent) {
+  function recordPublicStatements(state, event, intent, hasConfession = false) {
     const hasOtherWitness = event.witnessIds.some((id) => id !== intent.actorId);
     if (!hasOtherWitness) return;
 
@@ -427,11 +434,13 @@
       event.changes.publicRecord.push({ type: "evidence-established", factId });
     }
 
-    for (const factId of intent.confessionFactIds || []) {
-      const canEstablish = factId !== "fact-orin-ordered-sera" || state.publicRecord.evidenceIds.includes("fact-case-spare-key");
-      if (canEstablish && !state.publicRecord.establishedFactIds.includes(factId)) {
-        state.publicRecord.establishedFactIds.push(factId);
-        event.changes.publicRecord.push({ type: "fact-established", factId });
+    if (hasConfession) {
+      for (const factId of intent.confessionFactIds) {
+        const canEstablish = factId !== "fact-orin-ordered-sera" || state.publicRecord.evidenceIds.includes("fact-case-spare-key");
+        if (canEstablish && !state.publicRecord.establishedFactIds.includes(factId)) {
+          state.publicRecord.establishedFactIds.push(factId);
+          event.changes.publicRecord.push({ type: "fact-established", factId });
+        }
       }
     }
   }
@@ -440,20 +449,21 @@
     const state = context.state;
     const actor = state.npcs[intent.actorId];
     const isPrivate = intent.audience === "private";
+    const hasConfession = Array.isArray(intent.confessionFactIds) && intent.confessionFactIds.length > 0;
     const witnesses = isPrivate ? [intent.actorId, intent.targetId] : publicWitnesses(state, intent.actorId);
     const factIds = [...(intent.factIds || []), ...(intent.confessionFactIds || [])];
     const event = emit(context, {
       id: `evt-world-${intent.id}`,
       phase: 3,
       phaseLabel: "Communication and accusation",
-      category: intent.confessionFactIds ? "Confession" : "Communication",
+      category: hasConfession ? "Confession" : "Communication",
       action: intent.action,
       actorId: intent.actorId,
       targetIds: isPrivate ? [intent.targetId] : witnesses.filter((id) => id !== intent.actorId),
       locationId: actor.locationId,
       visibility: isPrivate ? "private" : "public",
-      description: intent.confessionFactIds
-        ? `${actor.name} publicly confesses the responsible actions they know.`
+      description: hasConfession
+        ? `${actor.name} makes a ${isPrivate ? "private" : "public"} confession about the responsible actions they know.`
         : `${actor.name} makes a ${isPrivate ? "private" : "public"} statement.`,
       goalId: intent.servedGoalId,
       rationale: intent.rationale,
@@ -462,8 +472,8 @@
       factIds,
       claimIds: (intent.claimIds || []).slice()
     });
-    recordPublicStatements(state, event, intent);
-    addMemories(context, event, witnesses, { source: "another-character", salience: intent.confessionFactIds ? "critical" : "important" });
+    if (!isPrivate) recordPublicStatements(state, event, intent, hasConfession);
+    addMemories(context, event, witnesses, { source: "another-character", salience: hasConfession ? "critical" : "important" });
 
     for (const witnessId of witnesses) {
       for (const factId of intent.factIds || []) setBelief(context, event, witnessId, factId, "believes-true", 90);
@@ -474,7 +484,7 @@
       }
     }
 
-    if (intent.confessionFactIds) {
+    if (hasConfession) {
       for (const witnessId of witnesses.filter((id) => id !== intent.actorId)) {
         queueTrust(context, witnessId, intent.actorId, 15, event.id, "risky confession");
         if (state.publicRecord.establishedFactIds.includes("fact-orin-ordered-sera") && witnessId !== "orin") {
@@ -750,6 +760,19 @@
       : medical === "Saved" && ["Exposed", "Partially exposed"].includes(truth)
         ? "Reconciled"
         : "Uneasy";
+    const clockEvent = state.events.slice().reverse().find((event) => event.category === "Clock update" && event.turn === state.turn);
+    const treatmentEvent = state.events.slice().reverse().find((event) => event.category === "Treatment"
+      && (event.changes.patient || []).some((change) => change.to === "Saved"));
+    const establishedTruthEvents = state.events.filter((event) => (event.changes.publicRecord || []).some((change) => change.type === "fact-established"
+      && ["fact-sera-moved-antidote", "fact-orin-ordered-sera"].includes(change.factId)));
+    const falseConsensusEvents = state.events.filter((event) => event.category === "Public record update"
+      && (event.changes.publicRecord || []).some((change) => change.falseConsensus === true));
+    const trustEvents = state.events.filter((event) => event.category === "Trust update" && (event.changes.trust || []).length > 0);
+    const medicalEventIds = [medical === "Saved" ? treatmentEvent : clockEvent].filter(Boolean).map((event) => event.id);
+    const truthContributors = truth === "False consensus" ? falseConsensusEvents : establishedTruthEvents;
+    const truthEventIds = (truthContributors.length ? truthContributors : [clockEvent]).filter(Boolean).map((event) => event.id);
+    const socialContributors = trustEvents.concat(falseConsensusEvents);
+    const socialEventIds = (socialContributors.length ? socialContributors : [clockEvent]).filter(Boolean).map((event) => event.id);
     return {
       id: scopeOutcomeId(state.identityNamespace, "outcome-world-original-v1"),
       medical,
@@ -757,7 +780,12 @@
       social,
       treatmentTurn: state.patient.treatmentTurn,
       antidote: deepClone(state.antidote),
-      finalTrust: Object.fromEntries(Object.entries(state.npcs).map(([id, npc]) => [id, deepClone(npc.trust)]))
+      finalTrust: Object.fromEntries(Object.entries(state.npcs).map(([id, npc]) => [id, deepClone(npc.trust)])),
+      attribution: {
+        medicalEventIds,
+        truthEventIds,
+        socialEventIds
+      }
     };
   }
 
@@ -768,6 +796,11 @@
     state.outcome = computeOutcome(state);
     state.status = "completed";
     const witnesses = state.npcOrder.slice();
+    const outcomeCauses = Array.from(new Set([
+      ...state.outcome.attribution.medicalEventIds,
+      ...state.outcome.attribution.truthEventIds,
+      ...state.outcome.attribution.socialEventIds
+    ]));
     const event = emit(context, {
       id: `evt-world-t${padTurn(state.turn)}-outcome`,
       phase: 5,
@@ -780,7 +813,8 @@
       changes: Object.assign(eventChanges(), {
         patient: [{ to: state.patient.status }],
         outcome: [{ medical: state.outcome.medical, truth: state.outcome.truth, social: state.outcome.social }]
-      })
+      }),
+      causes: outcomeCauses
     });
     addMemories(context, event, witnesses, { salience: "critical", valence: state.patient.status === "Saved" ? "positive" : "negative" });
   }
@@ -865,7 +899,7 @@
       consequenceMode: false
     };
     const payload = intervention.payload;
-    const boundaryCauseId = state.events[state.events.length - 1].id;
+    const appliedAtBoundaryId = latestBoundary.id;
 
     if (intervention.category === "Information") {
       const isRumor = payload.truthStatus === "false-rumor";
@@ -883,7 +917,8 @@
         witnessIds: [payload.recipientId],
         factIds: isRumor ? [] : [payload.propositionId],
         claimIds: isRumor ? [payload.propositionId] : [],
-        causes: [boundaryCauseId]
+        appliedAtBoundaryId,
+        causes: []
       });
       addMemories(context, event, event.witnessIds, { source: "player-intervention", salience: "critical", valence: "neutral" });
       setBelief(context, event, payload.recipientId, payload.propositionId, payload.beliefStance, payload.confidence);
@@ -904,7 +939,8 @@
         visibility: "public",
         description: payload.description,
         witnessIds: witnesses,
-        causes: [boundaryCauseId]
+        appliedAtBoundaryId,
+        causes: []
       });
       if (state.npcs[payload.fromId]) state.npcs[payload.fromId].inventory = state.npcs[payload.fromId].inventory.filter((itemId) => itemId !== payload.itemId);
       state.npcs[payload.toId].inventory.push(payload.itemId);
@@ -930,7 +966,8 @@
         visibility: "public",
         description: payload.description,
         witnessIds: witnesses,
-        causes: [boundaryCauseId]
+        appliedAtBoundaryId,
+        causes: []
       });
       location.environmentalConditions = payload.conditionState === "active"
         ? previousConditions.concat(payload.conditionId)
@@ -945,7 +982,7 @@
     }
 
     applyInformationConsequences(context, `${intervention.id}-information-update`);
-    state.boundaries.push(captureBoundary(state));
+    state.boundaries.push(captureBoundary(state, "post-intervention"));
     return deepFreeze(state);
   }
 
@@ -1017,10 +1054,11 @@
     invariant(!sourceState.identityNamespace, "Nested alternate forks are not supported.");
     invariant(typeof branchId === "string" && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(branchId), "A stable alternate branch identity is required.");
     invariant(branchId !== sourceState.branchId, "Alternate branch identity must differ from the Original.");
-    invariant(Number.isInteger(turn) && turn >= 0 && turn <= sourceState.turn, `No completed Original boundary exists for turn ${turn}.`);
+    invariant(Number.isInteger(turn) && turn >= 0 && turn <= 10 && turn <= sourceState.turn, `No eligible completed Original boundary exists for turn ${turn}.`);
     invariant(!sourceState.events.some((event) => event.eventType && Object.values(INTERVENTION_EVENT_TYPES).includes(event.eventType)), "The Original fork source cannot already contain an intervention.");
 
     const source = restoreBoundary(sourceState, turn);
+    invariant(source.status === "ready" && !source.outcome, `Completed boundary at turn ${turn} is terminal or not ready for intervention.`);
     const state = remapWorldForBranch(source, branchId, branchId, source.branchId, turn);
     state.events = source.events.map((event) => remapEventForBranch(event, branchId, branchId));
     const sequences = {};
@@ -1033,6 +1071,7 @@
         sourceId,
         turn: boundary.turn,
         eventCount: boundary.eventCount,
+        classification: boundary.classification,
         world: remapWorldForBranch(boundary.world, branchId, branchId, source.branchId, turn)
       };
     });
@@ -1092,16 +1131,25 @@
     finishIfRequired(context);
     if (state.status !== "completed") state.status = "ready";
     for (const npc of Object.values(state.npcs)) npc.currentIntent = null;
-    state.boundaries.push(captureBoundary(state));
+    state.boundaries.push(captureBoundary(state, "turn-close"));
     return deepFreeze(state);
   }
 
-  function restoreBoundary(state, turn) {
-    const boundary = state.boundaries.slice().reverse().find((candidate) => candidate.turn === turn);
-    invariant(boundary, `No completed boundary exists for turn ${turn}.`);
+  function restoreBoundary(state, turn, classification) {
+    if (classification !== undefined) invariant(BOUNDARY_CLASSIFICATIONS.includes(classification), `Unsupported boundary classification ${classification}.`);
+    let boundaryIndex = -1;
+    for (let index = state.boundaries.length - 1; index >= 0; index -= 1) {
+      const candidate = state.boundaries[index];
+      if (candidate.turn === turn && (classification === undefined || candidate.classification === classification)) {
+        boundaryIndex = index;
+        break;
+      }
+    }
+    invariant(boundaryIndex >= 0, `No completed boundary exists for turn ${turn}${classification ? ` with classification ${classification}` : ""}.`);
+    const boundary = state.boundaries[boundaryIndex];
     const restored = Object.assign(deepClone(boundary.world), {
       events: deepClone(state.events.slice(0, boundary.eventCount)),
-      boundaries: deepClone(state.boundaries.filter((candidate) => candidate.turn <= turn))
+      boundaries: deepClone(state.boundaries.slice(0, boundaryIndex + 1))
     });
     return deepFreeze(restored);
   }
@@ -1132,6 +1180,7 @@
   return Object.freeze({
     ENGINE_VERSION,
     ACTIONS,
+    BOUNDARY_CLASSIFICATIONS,
     INTERVENTION_PROTOCOL,
     INTERVENTION_EVENT_TYPES,
     createInitialWorld,

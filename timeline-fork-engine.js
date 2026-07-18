@@ -46,6 +46,7 @@
         branchId: state.branchId,
         turn: boundary.turn,
         eventCount: boundary.eventCount,
+        classification: boundary.classification,
         sequence
       });
     });
@@ -105,8 +106,12 @@
     return mapped;
   }
 
-  function scopeTurnRecord(record, branchState) {
-    const intents = record.intents.map((intent) => world.scopeIntentForState(branchState, intent));
+  function scopeTurnRecord(record, branchState, alignToOriginal = false) {
+    const intents = record.intents.map((intent) => world.scopeIntentForState(
+      branchState,
+      intent,
+      alignToOriginal ? { sourceId: intent.id } : {}
+    ));
     const intentMap = new Map(record.intents.map((intent, index) => [intent.id, intents[index].id]));
     const maps = identityMaps(branchState);
     return deepFreeze({
@@ -123,15 +128,22 @@
     if (!Object.isFrozen(session) || !session.original || session.original.kind !== "Original") throw new TypeError("A frozen timeline session is required.");
     if (session.alternate) throw new Error("This phase supports only one alternate branch.");
     if (!Number.isInteger(configuration.turn)) throw new TypeError("Fork turn must be an integer completed boundary.");
+    if (configuration.turn < 0 || configuration.turn > 10) {
+      throw new Error(`Fork turn ${configuration.turn} is outside the eligible MVP range 0 through 10.`);
+    }
     if (!session.original.boundaries.some((boundary) => boundary.turn === configuration.turn)) {
       throw new Error(`Original has no completed frozen boundary at turn ${configuration.turn}.`);
+    }
+    const selectedBoundary = session.original.state.boundaries.slice().reverse().find((boundary) => boundary.turn === configuration.turn);
+    if (!selectedBoundary || selectedBoundary.world.status !== "ready" || selectedBoundary.world.outcome) {
+      throw new Error(`Original boundary at turn ${configuration.turn} is terminal or not ready for intervention.`);
     }
 
     const branchId = generatedBranchId(session.original, configuration.turn);
     const state = world.forkCompletedBoundary(session.original.state, configuration.turn, branchId);
     const turns = session.original.turns
       .filter((record) => record.turn <= configuration.turn)
-      .map((record) => scopeTurnRecord(record, state));
+      .map((record) => scopeTurnRecord(record, state, true));
     const alternate = deepFreeze({
       id: `timeline-${branchId}`,
       kind: "Alternate",

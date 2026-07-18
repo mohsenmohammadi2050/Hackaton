@@ -12,7 +12,7 @@ const world = require(path.join(root, "world-engine.js"));
 const providers = require(path.join(root, "decision-providers.js"));
 const timeline = require(path.join(root, "timeline-fork-engine.js"));
 
-const APPROVED_ORIGINAL_SHA256 = "f563c2b79ebb8466b7064671f69ef617c47eeb45ab105a5b306e39edd2ce4fb7";
+const APPROVED_ORIGINAL_SHA256 = "6d9dfe9b9f628bf83a4f8fda4d39452260872c978335ddf7caabb9eb44a2501f";
 const UNCHANGED_LAYER_SHA256 = Object.freeze({
   "decision-layer.js": "e03c95ed1e6deaff1e9e093e07fbc811d729758694caf915b40a1d2a40781155",
   "decision-providers.js": "b7e64fe16b3370f77fc3e39eb9513ddd402fb82fc761986608f6f2a4a69b677f",
@@ -113,11 +113,11 @@ test("Original timeline is immutable and its replay remains byte-for-byte identi
   assert.equal(sha256(JSON.stringify({ state: original.state, turns: original.turns })), APPROVED_ORIGINAL_SHA256);
 });
 
-test("Every completed Original boundary can be cloned with a generated alternate identity", () => {
+test("Every eligible completed Original boundary can be cloned with a generated alternate identity", () => {
   const original = originalTimeline();
   assert.deepEqual(original.boundaries.map((boundary) => boundary.turn), Array.from({ length: 13 }, (_, turn) => turn));
 
-  for (const boundary of original.boundaries) {
+  for (const boundary of original.boundaries.filter((candidate) => candidate.turn <= 10)) {
     const session = timeline.forkAlternate(timeline.createTimelineSession(original), { turn: boundary.turn });
     assert.equal(session.alternate.state.turn, boundary.turn);
     assert.notEqual(session.alternate.branchId, original.branchId);
@@ -125,11 +125,12 @@ test("Every completed Original boundary can be cloned with a generated alternate
     assert.equal(session.alternate.sourceBranchId, original.branchId);
     assert.equal(session.alternate.forkTurn, boundary.turn);
     assert.ok(Object.isFrozen(session.alternate.state));
-    if (boundary.turn === 12) {
-      assert.ok(session.alternate.state.outcome.id.startsWith(`outcome-${session.alternate.branchId}--`));
-      assert.notEqual(session.alternate.state.outcome.id, original.state.outcome.id);
-    }
+    const intervened = timeline.applyAlternateIntervention(session, informationRequest(boundary.turn));
+    assert.equal(intervened.alternate.status, "intervened");
+    assert.ok(intervened.alternate.interventionEventId);
   }
+  assert.throws(() => timeline.forkAlternate(timeline.createTimelineSession(original), { turn: 11 }), /eligible MVP range 0 through 10/);
+  assert.throws(() => timeline.forkAlternate(timeline.createTimelineSession(original), { turn: 12 }), /eligible MVP range 0 through 10/);
 });
 
 test("Cloned prefix receives branch-specific boundary, event, intent, and memory identities", () => {
@@ -240,7 +241,7 @@ test("Alternate replay is deterministic and a session rejects a second or nested
 test("Forking rejects non-boundaries, caller-supplied identities, and continuation without intervention", () => {
   const original = originalTimeline();
   const empty = timeline.createTimelineSession(original);
-  assert.throws(() => timeline.forkAlternate(empty, { turn: 13 }), /no completed frozen boundary/);
+  assert.throws(() => timeline.forkAlternate(empty, { turn: 13 }), /eligible MVP range 0 through 10/);
   assert.throws(() => timeline.forkAlternate(empty, { turn: 2, branchId: "caller-choice" }), /unsupported field branchId/);
   const forked = timeline.forkAlternate(empty, { turn: 2 });
   assert.throws(() => timeline.runAlternate(forked, provider()), /requires exactly one intervention/);

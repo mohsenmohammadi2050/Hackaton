@@ -12,7 +12,7 @@ const engine = require(path.join(root, "world-engine.js"));
 const decision = require(path.join(root, "decision-layer.js"));
 const providers = require(path.join(root, "decision-providers.js"));
 
-const APPROVED_PHASE_4_RUN_SHA256 = "f563c2b79ebb8466b7064671f69ef617c47eeb45ab105a5b306e39edd2ce4fb7";
+const APPROVED_PHASE_7_1_RUN_SHA256 = "6d9dfe9b9f628bf83a4f8fda4d39452260872c978335ddf7caabb9eb44a2501f";
 const APPROVED_ARTIFACT_SHA256 = Object.freeze({
   "npc-agents.js": "c85f0ec1dcca49e6139b03b44702f911a2b85698ea1e2c9093119588825d8704",
   "world-scenario.js": "8ec05d2924a05415613f4ee4a1b22b69f3aa7ee6040f7a210f048aeb19123abd",
@@ -46,11 +46,11 @@ test("Decision Layer depends on the provider protocol and never imports or addre
   );
 });
 
-test("DeterministicProvider preserves the approved Phase 4 replay byte-for-byte", () => {
+test("DeterministicProvider matches the approved Phase 7.1 replay byte-for-byte", () => {
   const first = run(providers.createProvider({ type: "deterministic" }));
   const second = run(providers.createProvider({ type: "deterministic" }));
   assert.deepEqual(first, second);
-  assert.equal(sha256(JSON.stringify(first)), APPROVED_PHASE_4_RUN_SHA256);
+  assert.equal(sha256(JSON.stringify(first)), APPROVED_PHASE_7_1_RUN_SHA256);
 });
 
 test("A mock LLM provider returns the same intent contract and replay without external API calls", () => {
@@ -70,7 +70,7 @@ test("A mock LLM provider returns the same intent contract and replay without ex
   const deterministicResult = run(providers.createProvider({ type: "deterministic" }));
   const mockResult = run(providers.createProvider(mockConfiguration));
   assert.deepEqual(mockResult, deterministicResult);
-  assert.equal(sha256(JSON.stringify(mockResult)), APPROVED_PHASE_4_RUN_SHA256);
+  assert.equal(sha256(JSON.stringify(mockResult)), APPROVED_PHASE_7_1_RUN_SHA256);
   assert.equal(requests.length, 48);
   assert.ok(requests.every((request) => request.protocol === providers.PROVIDER_PROTOCOL));
   assert.ok(requests.every((request) => request.outputContract.format === "json-string" && request.outputContract.cardinality === 1));

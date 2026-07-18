@@ -13,7 +13,7 @@ const decision = require(path.join(root, "decision-layer.js"));
 const providers = require(path.join(root, "decision-providers.js"));
 const intervention = require(path.join(root, "intervention-layer.js"));
 
-const APPROVED_RUN_SHA256 = "f563c2b79ebb8466b7064671f69ef617c47eeb45ab105a5b306e39edd2ce4fb7";
+const APPROVED_RUN_SHA256 = "6d9dfe9b9f628bf83a4f8fda4d39452260872c978335ddf7caabb9eb44a2501f";
 const IMMUTABLE_LAYER_SHA256 = Object.freeze({
   "decision-layer.js": "e03c95ed1e6deaff1e9e093e07fbc811d729758694caf915b40a1d2a40781155",
   "decision-providers.js": "b7e64fe16b3370f77fc3e39eb9513ddd402fb82fc761986608f6f2a4a69b677f",
