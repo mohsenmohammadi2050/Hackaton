@@ -53,6 +53,38 @@
     return String(turn).padStart(2, "0");
   }
 
+  function scopeEventId(namespace, id) {
+    if (!namespace || id.startsWith(`evt-world-${namespace}--`)) return id;
+    invariant(id.startsWith("evt-world-"), `World event identity ${id} cannot be branch-scoped.`);
+    return `evt-world-${namespace}--${id.slice("evt-world-".length)}`;
+  }
+
+  function scopeMemoryId(namespace, id) {
+    if (!namespace || id.startsWith(`mem-world-${namespace}--`) || id.startsWith(`mem-start-${namespace}--`)) return id;
+    if (id.startsWith("mem-world-")) return `mem-world-${namespace}--${id.slice("mem-world-".length)}`;
+    if (id.startsWith("mem-start-")) return `mem-start-${namespace}--${id.slice("mem-start-".length)}`;
+    return `mem-${namespace}--${id}`;
+  }
+
+  function scopeIntentId(namespace, id) {
+    if (!namespace || id.startsWith(`${namespace}--`)) return id;
+    return `${namespace}--${id}`;
+  }
+
+  function scopeOutcomeId(namespace, id) {
+    if (!namespace || id.startsWith(`outcome-${namespace}--`)) return id;
+    return `outcome-${namespace}--${id.replace(/^outcome-/, "")}`;
+  }
+
+  function scopeIntentForState(state, intent) {
+    if (!state.identityNamespace) return intent;
+    const scoped = deepClone(intent);
+    scoped.sourceId = intent.sourceId || intent.id;
+    scoped.id = scopeIntentId(state.identityNamespace, intent.id);
+    scoped.citedMemoryIds = (intent.citedMemoryIds || []).map((id) => scopeMemoryId(state.identityNamespace, id));
+    return scoped;
+  }
+
   function captureBoundary(state) {
     const world = {};
     for (const key of [
@@ -62,7 +94,15 @@
     ]) {
       world[key] = deepClone(state[key]);
     }
-    return { turn: state.turn, eventCount: state.events.length, world };
+    for (const key of ["identityNamespace", "sourceBranchId", "forkTurn"]) {
+      if (state[key] !== undefined) world[key] = deepClone(state[key]);
+    }
+    const boundary = { turn: state.turn, eventCount: state.events.length, world };
+    if (state.identityNamespace) {
+      const sequence = state.boundaries.filter((candidate) => candidate.turn === state.turn).length + 1;
+      boundary.id = `boundary-${state.identityNamespace}-t${padTurn(state.turn)}-s${sequence}`;
+    }
+    return boundary;
   }
 
   function createInitialWorld(scenario) {
@@ -201,7 +241,8 @@
   }
 
   function emit(context, draft) {
-    invariant(!context.state.events.some((event) => event.id === draft.id), `Duplicate event identity ${draft.id}.`);
+    const eventId = scopeEventId(context.state.identityNamespace, draft.id);
+    invariant(!context.state.events.some((event) => event.id === eventId), `Duplicate event identity ${eventId}.`);
     context.order += 1;
     const event = Object.assign({
       branchId: context.state.branchId,
@@ -222,7 +263,7 @@
       claimIds: [],
       changes: eventChanges(),
       causes: []
-    }, draft);
+    }, draft, { id: eventId });
     context.state.events.push(event);
     return event;
   }
@@ -710,7 +751,7 @@
         ? "Reconciled"
         : "Uneasy";
     return {
-      id: "outcome-world-original-v1",
+      id: scopeOutcomeId(state.identityNamespace, "outcome-world-original-v1"),
       medical,
       truth,
       social,
@@ -734,7 +775,7 @@
       category: "Branch outcome",
       locationId: "world",
       visibility: "public",
-      description: `Original outcome: ${state.outcome.medical} / ${state.outcome.truth} / ${state.outcome.social}.`,
+      description: `${state.identityNamespace ? "Alternate" : "Original"} outcome: ${state.outcome.medical} / ${state.outcome.truth} / ${state.outcome.social}.`,
       witnessIds: witnesses,
       changes: Object.assign(eventChanges(), {
         patient: [{ to: state.patient.status }],
@@ -844,7 +885,7 @@
         claimIds: isRumor ? [payload.propositionId] : [],
         causes: [boundaryCauseId]
       });
-      addMemories(context, event, event.witnessIds, { source: "player-intervention", salience: "important", valence: "neutral" });
+      addMemories(context, event, event.witnessIds, { source: "player-intervention", salience: "critical", valence: "neutral" });
       setBelief(context, event, payload.recipientId, payload.propositionId, payload.beliefStance, payload.confidence);
     }
 
@@ -908,11 +949,104 @@
     return deepFreeze(state);
   }
 
+  function remapChangesForBranch(changes, namespace) {
+    const mapped = deepClone(changes);
+    if (mapped.memories) {
+      mapped.memories = mapped.memories.map((entry) => Object.assign({}, entry, {
+        memoryId: scopeMemoryId(namespace, entry.memoryId),
+        originEventId: scopeEventId(namespace, entry.originEventId)
+      }));
+    }
+    if (mapped.beliefs) {
+      mapped.beliefs = mapped.beliefs.map((entry) => Object.assign({}, entry, {
+        memoryId: scopeMemoryId(namespace, entry.memoryId)
+      }));
+    }
+    return mapped;
+  }
+
+  function remapEventForBranch(event, namespace, branchId) {
+    const mapped = deepClone(event);
+    mapped.sourceId = event.sourceId || event.id;
+    mapped.id = scopeEventId(namespace, event.id);
+    mapped.branchId = branchId;
+    mapped.citedMemoryIds = (event.citedMemoryIds || []).map((id) => scopeMemoryId(namespace, id));
+    mapped.createdMemoryIds = (event.createdMemoryIds || []).map((id) => scopeMemoryId(namespace, id));
+    mapped.causes = (event.causes || []).map((id) => id.startsWith("evt-world-") ? scopeEventId(namespace, id) : id);
+    mapped.changes = remapChangesForBranch(event.changes || eventChanges(), namespace);
+    return mapped;
+  }
+
+  function remapWorldForBranch(world, namespace, branchId, sourceBranchId, forkTurn) {
+    const mapped = deepClone(world);
+    mapped.branchId = branchId;
+    mapped.identityNamespace = namespace;
+    mapped.sourceBranchId = sourceBranchId;
+    mapped.forkTurn = forkTurn;
+
+    for (const npc of Object.values(mapped.npcs)) {
+      npc.memories = npc.memories.map((memory) => Object.assign({}, memory, {
+        sourceId: memory.sourceId || memory.id,
+        id: scopeMemoryId(namespace, memory.id),
+        originEventId: memory.originEventId && scopeEventId(namespace, memory.originEventId)
+      }));
+      for (const belief of Object.values(npc.beliefs)) {
+        belief.supportingMemoryIds = (belief.supportingMemoryIds || []).map((id) => scopeMemoryId(namespace, id));
+      }
+      if (npc.currentIntent) npc.currentIntent = scopeIntentForState(mapped, npc.currentIntent);
+    }
+
+    mapped.publicRecord.claims = mapped.publicRecord.claims.map((claim) => {
+      const eventId = scopeEventId(namespace, claim.eventId);
+      return Object.assign({}, claim, { id: `${eventId}:${claim.claimId}`, eventId });
+    });
+    if (mapped.outcome) {
+      mapped.outcome.sourceId = mapped.outcome.sourceId || mapped.outcome.id;
+      mapped.outcome.id = scopeOutcomeId(namespace, mapped.outcome.id);
+    }
+    return mapped;
+  }
+
+  function boundaryIdentity(branchId, turn, sequence) {
+    return `boundary-${branchId}-t${padTurn(turn)}-s${sequence}`;
+  }
+
+  function forkCompletedBoundary(sourceState, turn, branchId) {
+    invariant(sourceState && sourceState.engineVersion === ENGINE_VERSION, "A compatible authoritative Original timeline is required.");
+    invariant(Object.isFrozen(sourceState), "Timeline forks require an immutable Original timeline.");
+    invariant(!sourceState.identityNamespace, "Nested alternate forks are not supported.");
+    invariant(typeof branchId === "string" && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(branchId), "A stable alternate branch identity is required.");
+    invariant(branchId !== sourceState.branchId, "Alternate branch identity must differ from the Original.");
+    invariant(Number.isInteger(turn) && turn >= 0 && turn <= sourceState.turn, `No completed Original boundary exists for turn ${turn}.`);
+    invariant(!sourceState.events.some((event) => event.eventType && Object.values(INTERVENTION_EVENT_TYPES).includes(event.eventType)), "The Original fork source cannot already contain an intervention.");
+
+    const source = restoreBoundary(sourceState, turn);
+    const state = remapWorldForBranch(source, branchId, branchId, source.branchId, turn);
+    state.events = source.events.map((event) => remapEventForBranch(event, branchId, branchId));
+    const sequences = {};
+    state.boundaries = source.boundaries.map((boundary) => {
+      const sequence = (sequences[boundary.turn] || 0) + 1;
+      sequences[boundary.turn] = sequence;
+      const sourceId = boundary.id || boundaryIdentity(source.branchId, boundary.turn, sequence);
+      return {
+        id: boundaryIdentity(branchId, boundary.turn, sequence),
+        sourceId,
+        turn: boundary.turn,
+        eventCount: boundary.eventCount,
+        world: remapWorldForBranch(boundary.world, branchId, branchId, source.branchId, turn)
+      };
+    });
+    return deepFreeze(state);
+  }
+
   function resolveTurn(previous, intents) {
     invariant(previous && previous.engineVersion === ENGINE_VERSION, "A compatible authoritative world boundary is required.");
     invariant(previous.status === "ready", "Only a ready completed boundary can resolve another turn.");
     invariant(previous.turn < previous.deadline, "The branch has reached its deadline.");
-    validateIntentSet(previous, intents);
+    const authoritativeIntents = previous.identityNamespace
+      ? intents.map((intent) => scopeIntentForState(previous, intent))
+      : intents;
+    validateIntentSet(previous, authoritativeIntents);
 
     const state = deepClone(previous);
     state.turn = previous.turn + 1;
@@ -927,10 +1061,10 @@
       pendingBeliefs: [],
       consequenceMode: false
     };
-    for (const intent of intents) state.npcs[intent.actorId].currentIntent = deepClone(intent);
+    for (const intent of authoritativeIntents) state.npcs[intent.actorId].currentIntent = deepClone(intent);
 
     const priorityIndex = Object.fromEntries(priority.map((id, index) => [id, index]));
-    const sorted = intents.slice().sort((left, right) => {
+    const sorted = authoritativeIntents.slice().sort((left, right) => {
       const phase = PHASE[left.action] - PHASE[right.action];
       return phase || priorityIndex[left.actorId] - priorityIndex[right.actorId];
     });
@@ -1001,6 +1135,8 @@
     INTERVENTION_PROTOCOL,
     INTERVENTION_EVENT_TYPES,
     createInitialWorld,
+    forkCompletedBoundary,
+    scopeIntentForState,
     resolveTurn,
     resolveInterventionEvent,
     restoreBoundary,
