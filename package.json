@@ -1,10 +1,10 @@
 {
   "name": "forked-fates",
-  "version": "0.4.1",
+  "version": "0.6.0",
   "private": true,
-  "description": "Forked Fates autonomous NPC decisions through a provider-neutral architecture",
+  "description": "Forked Fates authoritative counterfactual intervention engine",
   "scripts": {
-    "check": "node --check recorded-data.js && node --check app.js && node --check world-scenario.js && node --check world-engine.js && node --check decision-layer.js && node --check decision-providers.js && node --check npc-agents.js",
-    "test": "node --test tests/phase1.test.js tests/world-engine.test.js tests/autonomous-agents.test.js tests/provider-architecture.test.js"
+    "check": "node --check recorded-data.js && node --check app.js && node --check world-scenario.js && node --check world-engine.js && node --check decision-layer.js && node --check decision-providers.js && node --check intervention-layer.js && node --check npc-agents.js",
+    "test": "node --test tests/phase1.test.js tests/world-engine.test.js tests/autonomous-agents.test.js tests/provider-architecture.test.js tests/intervention-engine.test.js"
   }
 }

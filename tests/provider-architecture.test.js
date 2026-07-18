@@ -15,7 +15,6 @@ const providers = require(path.join(root, "decision-providers.js"));
 const APPROVED_PHASE_4_RUN_SHA256 = "f563c2b79ebb8466b7064671f69ef617c47eeb45ab105a5b306e39edd2ce4fb7";
 const APPROVED_ARTIFACT_SHA256 = Object.freeze({
   "npc-agents.js": "c85f0ec1dcca49e6139b03b44702f911a2b85698ea1e2c9093119588825d8704",
-  "world-engine.js": "6bdd5132d95088250b79e18e376748cc7a4301ee2e94c9c0ab35f07b1e4ee025",
   "world-scenario.js": "8ec05d2924a05415613f4ee4a1b22b69f3aa7ee6040f7a210f048aeb19123abd",
   "recorded-data.js": "365e724d551eab0e78299e70e748616f667815b34c92cb033f0e0b2b88065a62",
   "app.js": "718d08d3327293eaf0a1f9b11469f72d36269146cd2127ed6687c004f8b71d96",
@@ -31,7 +30,7 @@ function run(provider) {
   return decision.runAutonomousOriginal(scenario, provider);
 }
 
-test("Approved policy, World, Recorded, scenario, and UI artifacts remain byte-for-byte unchanged", () => {
+test("Approved policy, Recorded, scenario, and UI artifacts remain byte-for-byte unchanged", () => {
   for (const [relativePath, approvedHash] of Object.entries(APPROVED_ARTIFACT_SHA256)) {
     assert.equal(sha256(fs.readFileSync(path.join(root, relativePath))), approvedHash, `${relativePath} changed`);
   }

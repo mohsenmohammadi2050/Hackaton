@@ -9,6 +9,12 @@
 
   const ENGINE_VERSION = "1.0.0";
   const ACTIONS = Object.freeze(["Move", "Investigate", "Communicate", "Transfer", "Administer", "Accuse", "Wait"]);
+  const INTERVENTION_PROTOCOL = "forked-fates-intervention-v1";
+  const INTERVENTION_EVENT_TYPES = Object.freeze({
+    Information: "world.intervention.information.v1",
+    ItemTransfer: "world.intervention.item-transfer.v1",
+    EnvironmentalEvent: "world.intervention.environmental-event.v1"
+  });
   const PHASE = Object.freeze({
     Move: 1,
     Investigate: 2,
@@ -21,6 +27,11 @@
 
   function invariant(condition, message) {
     if (!condition) throw new Error(message);
+  }
+
+  function exactKeys(value, allowed, label) {
+    const unexpected = Object.keys(value).find((key) => !allowed.includes(key));
+    invariant(!unexpected, `${label} contains unsupported field ${unexpected}.`);
   }
 
   function deepClone(value) {
@@ -569,7 +580,7 @@
     addMemories(context, event, event.witnessIds, { salience: "important", valence: "negative" });
   }
 
-  function applyInformationConsequences(context) {
+  function applyInformationConsequences(context, eventId) {
     const memoryChanges = context.pendingMemories.map((memory) => ({
       memoryId: memory.id,
       ownerId: memory.ownerId,
@@ -596,7 +607,7 @@
 
     if (memoryChanges.length || beliefChanges.length) {
       emit(context, {
-        id: `evt-world-t${padTurn(context.state.turn)}-information-update`,
+        id: eventId || `evt-world-t${padTurn(context.state.turn)}-information-update`,
         phase: 5,
         phaseLabel: "Consequences",
         category: "Memory and belief update",
@@ -744,6 +755,159 @@
     throw new Error(`No resolver exists for ${intent.action}.`);
   }
 
+  function validateInterventionEvent(previous, intervention) {
+    invariant(intervention && typeof intervention === "object" && !Array.isArray(intervention), "A typed intervention event is required.");
+    exactKeys(intervention, ["protocol", "id", "eventType", "category", "boundaryTurn", "payload"], "Intervention event");
+    invariant(intervention.protocol === INTERVENTION_PROTOCOL, `Unsupported intervention protocol ${intervention.protocol}.`);
+    invariant(typeof intervention.id === "string" && /^evt-world-intervention-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(intervention.id), "Intervention event requires a stable evt-world-intervention identity.");
+    invariant(Object.hasOwn(INTERVENTION_EVENT_TYPES, intervention.category), `Unsupported intervention category ${intervention.category}.`);
+    invariant(intervention.eventType === INTERVENTION_EVENT_TYPES[intervention.category], "Intervention event type does not match its category.");
+    invariant(intervention.boundaryTurn === previous.turn, `Intervention was not authored for completed turn ${previous.turn}.`);
+    invariant(intervention.payload && typeof intervention.payload === "object" && !Array.isArray(intervention.payload), "Intervention payload must be an object.");
+    invariant(typeof intervention.payload.description === "string" && intervention.payload.description.trim().length > 0 && intervention.payload.description.length <= 280, "Intervention description must contain 1 to 280 characters.");
+
+    if (intervention.category === "Information") {
+      exactKeys(intervention.payload, ["recipientId", "propositionId", "truthStatus", "beliefStance", "confidence", "description"], "Information intervention");
+      invariant(previous.npcs[intervention.payload.recipientId], `Unknown information recipient ${intervention.payload.recipientId}.`);
+      invariant(typeof intervention.payload.propositionId === "string" && /^(fact|obs|claim)-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(intervention.payload.propositionId), "Information intervention requires a stable proposition identity.");
+      invariant(["true-evidence", "true-observation", "false-rumor"].includes(intervention.payload.truthStatus), "Information truth status is invalid.");
+      invariant(["believes-true", "believes-false", "uncertain"].includes(intervention.payload.beliefStance), "Information belief stance is invalid.");
+      invariant(Number.isInteger(intervention.payload.confidence) && intervention.payload.confidence >= 0 && intervention.payload.confidence <= 100, "Information belief confidence must be an integer from 0 to 100.");
+      const fact = previous.facts[intervention.payload.propositionId];
+      if (intervention.payload.truthStatus !== "false-rumor") invariant(fact && fact.truth === true, "True information must reference authoritative scenario truth.");
+      if (intervention.payload.truthStatus === "false-rumor") invariant(!fact || fact.truth !== true, "A true scenario fact cannot be labeled as a false rumor.");
+    }
+
+    if (intervention.category === "ItemTransfer") {
+      exactKeys(intervention.payload, ["itemId", "fromId", "toId", "description"], "Item-transfer intervention");
+      invariant(intervention.payload.itemId === "antidote", "Only the antidote may be transferred.");
+      invariant(previous.npcs[intervention.payload.toId], `Unknown item recipient ${intervention.payload.toId}.`);
+      invariant(!previous.antidote.used, "The used antidote cannot be transferred.");
+      const currentHolder = previous.antidote.possessorId || previous.antidote.locationId;
+      invariant(intervention.payload.fromId === currentHolder, `The antidote is not held by ${intervention.payload.fromId}.`);
+      invariant(intervention.payload.fromId !== intervention.payload.toId, "Item source and recipient must differ.");
+      const sourceLocation = previous.npcs[intervention.payload.fromId]
+        ? previous.npcs[intervention.payload.fromId].locationId
+        : previous.locations[intervention.payload.fromId] && intervention.payload.fromId;
+      invariant(sourceLocation && previous.npcs[intervention.payload.toId].locationId === sourceLocation, "Item intervention source and recipient must be co-located.");
+    }
+
+    if (intervention.category === "EnvironmentalEvent") {
+      exactKeys(intervention.payload, ["locationId", "conditionId", "conditionState", "description"], "Environmental intervention");
+      invariant(previous.locations[intervention.payload.locationId], `Unknown environmental location ${intervention.payload.locationId}.`);
+      invariant(typeof intervention.payload.conditionId === "string" && /^condition-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(intervention.payload.conditionId), "Environmental event requires a stable condition identity.");
+      invariant(["active", "cleared"].includes(intervention.payload.conditionState), "Environmental condition state must be active or cleared.");
+      const conditions = previous.locations[intervention.payload.locationId].environmentalConditions || [];
+      const isActive = conditions.includes(intervention.payload.conditionId);
+      invariant(intervention.payload.conditionState === "active" ? !isActive : isActive, `Environmental condition is already ${intervention.payload.conditionState}.`);
+    }
+  }
+
+  function resolveInterventionEvent(previous, intervention) {
+    invariant(previous && previous.engineVersion === ENGINE_VERSION, "A compatible authoritative world boundary is required.");
+    invariant(Object.isFrozen(previous), "Interventions require a frozen completed boundary.");
+    invariant(previous.status === "ready", "Interventions require a ready completed boundary.");
+    const latestBoundary = previous.boundaries[previous.boundaries.length - 1];
+    invariant(latestBoundary && latestBoundary.turn === previous.turn && latestBoundary.eventCount === previous.events.length, "Interventions require the latest frozen completed boundary.");
+    invariant(!previous.events.some((event) => event.eventType && Object.values(INTERVENTION_EVENT_TYPES).includes(event.eventType)), "A boundary may contain only one external intervention.");
+    validateInterventionEvent(previous, intervention);
+
+    const state = deepClone(previous);
+    const upcomingTurn = Math.min(state.deadline, state.turn + 1);
+    const context = {
+      state,
+      priority: actorPriority(state, upcomingTurn),
+      order: state.events.filter((event) => event.turn === state.turn).reduce((highest, event) => Math.max(highest, event.order || 0), 0),
+      pendingTrust: {},
+      pendingMemories: [],
+      pendingBeliefs: [],
+      consequenceMode: false
+    };
+    const payload = intervention.payload;
+    const boundaryCauseId = state.events[state.events.length - 1].id;
+
+    if (intervention.category === "Information") {
+      const isRumor = payload.truthStatus === "false-rumor";
+      const event = emit(context, {
+        id: intervention.id,
+        eventType: intervention.eventType,
+        external: true,
+        phase: 0,
+        phaseLabel: "Counterfactual intervention",
+        category: "User intervention",
+        targetIds: [payload.recipientId],
+        locationId: state.npcs[payload.recipientId].locationId,
+        visibility: "private",
+        description: payload.description,
+        witnessIds: [payload.recipientId],
+        factIds: isRumor ? [] : [payload.propositionId],
+        claimIds: isRumor ? [payload.propositionId] : [],
+        causes: [boundaryCauseId]
+      });
+      addMemories(context, event, event.witnessIds, { source: "player-intervention", salience: "important", valence: "neutral" });
+      setBelief(context, event, payload.recipientId, payload.propositionId, payload.beliefStance, payload.confidence);
+    }
+
+    if (intervention.category === "ItemTransfer") {
+      const sourceLocation = state.npcs[payload.fromId] ? state.npcs[payload.fromId].locationId : payload.fromId;
+      const witnesses = occupantsAt(state, sourceLocation);
+      const event = emit(context, {
+        id: intervention.id,
+        eventType: intervention.eventType,
+        external: true,
+        phase: 0,
+        phaseLabel: "Counterfactual intervention",
+        category: "User intervention",
+        targetIds: [payload.fromId, payload.toId, payload.itemId],
+        locationId: sourceLocation,
+        visibility: "public",
+        description: payload.description,
+        witnessIds: witnesses,
+        causes: [boundaryCauseId]
+      });
+      if (state.npcs[payload.fromId]) state.npcs[payload.fromId].inventory = state.npcs[payload.fromId].inventory.filter((itemId) => itemId !== payload.itemId);
+      state.npcs[payload.toId].inventory.push(payload.itemId);
+      state.antidote.locationId = null;
+      state.antidote.possessorId = payload.toId;
+      event.changes.items.push({ itemId: payload.itemId, from: payload.fromId, to: payload.toId });
+      addMemories(context, event, witnesses, { source: "player-intervention", salience: "critical", valence: "neutral" });
+    }
+
+    if (intervention.category === "EnvironmentalEvent") {
+      const location = state.locations[payload.locationId];
+      const witnesses = occupantsAt(state, payload.locationId);
+      const previousConditions = (location.environmentalConditions || []).slice();
+      const event = emit(context, {
+        id: intervention.id,
+        eventType: intervention.eventType,
+        external: true,
+        phase: 0,
+        phaseLabel: "Counterfactual intervention",
+        category: "User intervention",
+        targetIds: [payload.locationId, payload.conditionId],
+        locationId: payload.locationId,
+        visibility: "public",
+        description: payload.description,
+        witnessIds: witnesses,
+        causes: [boundaryCauseId]
+      });
+      location.environmentalConditions = payload.conditionState === "active"
+        ? previousConditions.concat(payload.conditionId)
+        : previousConditions.filter((conditionId) => conditionId !== payload.conditionId);
+      event.changes.locations.push({
+        locationId: payload.locationId,
+        conditionId: payload.conditionId,
+        from: payload.conditionState === "active" ? "clear" : "active",
+        to: payload.conditionState
+      });
+      addMemories(context, event, witnesses, { source: "player-intervention", salience: "important", valence: "neutral" });
+    }
+
+    applyInformationConsequences(context, `${intervention.id}-information-update`);
+    state.boundaries.push(captureBoundary(state));
+    return deepFreeze(state);
+  }
+
   function resolveTurn(previous, intents) {
     invariant(previous && previous.engineVersion === ENGINE_VERSION, "A compatible authoritative world boundary is required.");
     invariant(previous.status === "ready", "Only a ready completed boundary can resolve another turn.");
@@ -799,7 +963,7 @@
   }
 
   function restoreBoundary(state, turn) {
-    const boundary = state.boundaries.find((candidate) => candidate.turn === turn);
+    const boundary = state.boundaries.slice().reverse().find((candidate) => candidate.turn === turn);
     invariant(boundary, `No completed boundary exists for turn ${turn}.`);
     const restored = Object.assign(deepClone(boundary.world), {
       events: deepClone(state.events.slice(0, boundary.eventCount)),
@@ -834,8 +998,11 @@
   return Object.freeze({
     ENGINE_VERSION,
     ACTIONS,
+    INTERVENTION_PROTOCOL,
+    INTERVENTION_EVENT_TYPES,
     createInitialWorld,
     resolveTurn,
+    resolveInterventionEvent,
     restoreBoundary,
     replayOriginal,
     observableState
