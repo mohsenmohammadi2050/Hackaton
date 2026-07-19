@@ -1,7 +1,9 @@
 # Forked Fates Technical Debt Register
 
 **Snapshot:** `0635ad1`  
-**Assessment basis:** current 67-test MVP architecture, not a hypothetical finished Phase 8 system
+**Assessment basis:** current 107-test Phase 8 MVP architecture
+
+> Phase 8 note: the former production-validator gap is closed by the versioned `timeline-integrity.js` validator introduced in Phase 7.1 and required before comparison. Remaining persistence/load validation work is covered by P0.2. Boundary classifications are now explicit (`initial`, `turn-close`, `post-intervention`), closing the former same-turn ambiguity item. The entries below otherwise remain applicable unless superseded by a note.
 
 ## Priority definitions
 
@@ -124,6 +126,14 @@ Provider requests contain only owned projections, but an injected provider imple
 **Risk:** A real adapter could leak one NPC's prior request or output to another despite the Decision projection being correct.
 
 **Before real providers:** Require stateless calls or actor-scoped contexts and test adapters for cross-NPC leakage.
+
+### P1.12 Synchronous Live initialization and Alternate completion
+
+The deterministic four-NPC, twelve-turn MVP completes quickly, but `createLiveSession()` and `completeAlternate()` resolve full timelines synchronously. A remote provider or larger scenario would block the browser main thread. Move orchestration to an asynchronous worker boundary before real provider transport; do not make World mutation asynchronous internally.
+
+### P2.4 Framework-free presentation concentration
+
+`live-presentation.js` intentionally keeps Phase 8 dependency-free, but its string templates combine workspace, inspector, composer, comparison, and interaction dispatch. A later feature phase should split presentation components behind the same adapter without moving domain logic into them. This was not refactored during Phase 8 because the user journey is bounded and tested.
 
 ## P2 — maintainability debt
 

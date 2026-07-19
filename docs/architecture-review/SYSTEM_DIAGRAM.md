@@ -106,3 +106,22 @@ sequenceDiagram
 - Solid arrows indicate runtime calls or data dependencies.
 - Only `world-engine.js` may convert intents or intervention events into authoritative state changes.
 - Timeline, Intervention, Decision, Provider, and policy modules operate on immutable inputs or create requests; they do not directly mutate World state.
+# Phase 8 Presentation Integration Addendum
+
+```mermaid
+flowchart LR
+  RD["Immutable Recorded data"] --> APP["app.js mode router"]
+  APP --> REC["Recorded presentation"]
+  APP --> LIVE["live-presentation.js"]
+  LIVE --> ADAPTER["live-session-adapter.js"]
+  ADAPTER --> VM["Frozen view models"]
+  ADAPTER --> FORK["Timeline Fork Engine"]
+  ADAPTER --> VALIDATE["Timeline Integrity"]
+  ADAPTER --> COMPARE["Pure Branch Comparison"]
+  FORK --> WORLD["Authoritative World Engine"]
+  FORK --> DECISION["Decision + Provider"]
+  COMPARE --> VALIDATE
+  REC -. "independent; no simulation dependency" .- WORLD
+```
+
+The UI never calls World, Decision, Provider, Intervention, Fork, or Integrity APIs directly. Recorded playback remains usable when the entire Live path is absent.

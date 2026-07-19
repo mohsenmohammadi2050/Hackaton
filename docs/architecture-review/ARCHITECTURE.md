@@ -2,7 +2,7 @@
 
 **Snapshot:** commit `0635ad1`, tag `phase-7-D2-isolated-timeline-fork-engine`  
 **Runtime:** framework-free JavaScript, CommonJS for tests and UMD-style browser compatibility  
-**Current product state:** immutable Recorded Original, authoritative autonomous Original, validated interventions, and one isolated Alternate timeline; no Live UI or comparison
+**Current product state:** immutable Recorded Original plus a demo-ready Live UI for authoritative playback, one isolated Alternate, typed intervention, and validated branch comparison
 
 ## 1. Executive summary
 
@@ -11,7 +11,9 @@ Forked Fates deliberately contains two independent story systems:
 1. **Recorded playback** is an immutable authored demonstration rendered directly by the presentation application. It never depends on the World Engine, Decision Layer, providers, or autonomous policies.
 2. **Authoritative simulation** derives state through World rules. The Decision Layer supplies each NPC with an owned-state projection, obtains one intent through a provider, validates it, and gives the complete four-intent set to the World Engine. Interventions and timeline forks enter through validated adapters but are resolved authoritatively by the World Engine.
 
-The World Engine is the only module allowed to create authoritative state transitions. Other layers may validate, project, configure, or orchestrate, but they do not directly edit World state.
+The World Engine is the only module allowed to create authoritative state transitions. Other layers may validate, project, configure, orchestrate, or derive display-only comparisons, but they do not directly edit World state.
+
+Phase 8 adds a strict presentation integration boundary: `app.js` routes mode selection, `live-presentation.js` owns UI state, and `live-session-adapter.js` is the only module used by the Live UI to reach simulation orchestration. `live-view-models.js` and `branch-comparison.js` are immutable derivation modules; comparison always runs Timeline Integrity validation first.
 
 ## 2. High-level architecture
 
@@ -28,6 +30,13 @@ world-scenario.js -> World Engine <- Decision Layer <- Provider <- NPC policy
                   Intervention Layer      |
                            ^              |
                            +---- Timeline Fork Engine
+
+Live presentation path
+app.js -> live-presentation.js -> live-session-adapter.js
+                                      |-> Timeline Fork Engine
+                                      |-> Timeline Integrity
+                                      |-> Live View Models
+                                      +-> Branch Comparison
 ```
 
 The dependency graph is intentionally not symmetric:
@@ -46,7 +55,8 @@ See [SYSTEM_DIAGRAM.md](SYSTEM_DIAGRAM.md) for detailed diagrams.
 | Layer | Modules | Owns | Must not own |
 |---|---|---|---|
 | Recorded | `recorded-data.js` | Authored 12-turn Original snapshots, events, character histories, outcomes, and stable Recorded identities | World derivation, autonomous decisions, alternate simulation |
-| Presentation | `index.html`, `styles.css`, `app.js` | Start, briefing, workspace, step/run/pause, timeline review, inspector, restart, Recorded labels | World logic, hidden-truth derivation, provider calls, branch logic |
+| Presentation | `index.html`, `styles.css`, `app.js`, `live-presentation.js` | Mode routing, Start, briefing, workspaces, frozen-boundary playback, timeline/inspectors, intervention composer, branch switching, comparison rendering, recovery | World logic, hidden-truth derivation, direct provider/World calls |
+| Presentation integration | `live-session-adapter.js`, `live-view-models.js`, `branch-comparison.js`, `demo-path-config.js` | Safe orchestration facade, immutable display projections, validated pure comparison, approved demo configuration | Authoritative mutation, policy logic, Recorded derivation |
 | Scenario | `world-scenario.js` | Initial World data, facts, NPC traits/goals/trust/memories/beliefs, locations, priority, approved predetermined intents | Runtime mutation or presentation |
 | World | `world-engine.js` | Authoritative state, legal action resolution, events, memories, beliefs, trust, public record, clock, patient, outcomes, boundaries, intervention resolution, fork cloning, branch identity remapping | NPC choice, UI rendering, provider configuration |
 | Decision | `decision-layer.js` | Owned-state projections, relevant-memory selection, output parsing, decision validation, retry orchestration, four-intent collection | Authoritative mutation, policy selection, hidden state exposure |

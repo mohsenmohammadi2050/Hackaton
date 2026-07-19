@@ -289,7 +289,7 @@
       if (action === "apply-intervention") { applyIntervention(interventionRequest(selectedView())); return true; }
       if (action === "resolve-alternate") { try { adapter.completeAlternate(); render(); announce("Alternate future resolved deterministically. Use Step or Run to reveal its frozen boundaries."); } catch (error) { fail(error); } return true; }
       if (action === "switch-branch") { stopTimer(); ui.branch = control.dataset.branch; ui.composer = false; ui.compare = false; const view = selectedView(); ui.selection = { type: "event", id: view.events.at(-1)?.id || null }; render(); announce(`${view.branch.kind} timeline selected.`); return true; }
-      if (action === "open-comparison") { ui.compare = true; render(); announce("Validated side-by-side branch comparison opened."); return true; }
+      if (action === "open-comparison") { ui.compare = true; render(); if (typeof win.scrollTo === "function") win.scrollTo({ top: 0, behavior: "smooth" }); announce("Validated side-by-side branch comparison opened."); return true; }
       if (action === "close-comparison") { ui.compare = false; render(); return true; }
       if (action === "jump-comparison-event") { ui.compare = false; ui.branch = "alternate"; const boundary = list("alternate").filter((item) => item.turn === Number(control.dataset.turn)).at(-1); ui.selections.alternate = boundary.id; ui.selection = { type: "event", id: control.dataset.event }; render(); return true; }
       return false;

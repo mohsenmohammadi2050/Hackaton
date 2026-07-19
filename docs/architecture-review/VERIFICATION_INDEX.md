@@ -1,8 +1,27 @@
 # Forked Fates Verification Index
 
-**Current checkpoint:** `0635ad1` (`phase-7-D2-isolated-timeline-fork-engine`)  
-**Current automated result:** 67 tests passing, 0 failing  
-**Approved Original replay SHA-256:** `f563c2b79ebb8466b7064671f69ef617c47eeb45ab105a5b306e39edd2ce4fb7`
+**Current checkpoint:** Phase 8 final (`phase-8-D2-demo-ready-product`)  
+**Current automated result:** 107 tests passing, 0 failing  
+**Approved Original replay SHA-256:** `6d9dfe9b9f628bf83a4f8fda4d39452260872c978335ddf7caabb9eb44a2501f`  
+**Approved demo Alternate SHA-256:** `73e88589d7d5fcf8554ad69a2fe64137386402143c878a859dc793251da98e5a`
+
+## Current-phase addendum
+
+### Phase 7.1 — Causal Integrity Hardening and review patch
+
+- **Commits:** `081c7a0`, `d503a79`
+- **Evidence:** [`../PHASE_7_1_CAUSAL_INTEGRITY_VERIFICATION.md`](../PHASE_7_1_CAUSAL_INTEGRITY_VERIFICATION.md)
+- **Tests added:** 30 in `tests/causal-integrity.test.js`.
+- **Guarantees:** correct private/public communication, semantic confession handling, exact source alignment, branch-local acyclic causes, temporal memory availability, precise intervention placement, deterministic outcome attribution, explicit boundary classification, fork eligibility, and reusable integrity validation.
+
+### Phase 8 — Demo-ready Live product experience
+
+- **Checkpoint commits:** `16b68bf` (D0), `4d42b75` (D1), final D2 checkpoint.
+- **Evidence:** [`../PHASE_8_VERIFICATION.md`](../PHASE_8_VERIFICATION.md), [`../DEMO_PATH.md`](../DEMO_PATH.md)
+- **Tests added:** 10 in `tests/phase8-integration.test.js`.
+- **Guarantees:** adapter-only Live presentation boundary, frozen view models, immutable Recorded fallback, deterministic playback, one eligible fork, one typed intervention, branch switching, pure integrity-gated comparison, typed causal/comparison-only links, recovery, responsive presentation, and protected runtime hashes.
+
+The phase history below is the original Phase 7 audit index and remains useful as historical evidence.
 
 ## Phase history
 
@@ -130,7 +149,9 @@
 | `tests/provider-architecture.test.js` | 7 | Provider Phase 5 |
 | `tests/intervention-engine.test.js` | 9 | Intervention Phase 6 |
 | `tests/timeline-fork-engine.test.js` | 11 | Fork Phase 7 |
-| **Total** | **67** | All completed phases |
+| `tests/causal-integrity.test.js` | 30 | Phase 7.1 causal/reference integrity |
+| `tests/phase8-integration.test.js` | 10 | Phase 8 presentation integration and demo |
+| **Total** | **107** | All completed phases |
 
 ## Cross-phase regression guarantees
 

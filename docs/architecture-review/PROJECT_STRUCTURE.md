@@ -1,6 +1,21 @@
 # Forked Fates Project Structure
 
-**Snapshot:** `0635ad1`
+**Snapshot:** Phase 8 final checkpoint (supersedes the Phase 7 tree retained below)
+
+## Phase 8 additions
+
+| Module | Purpose |
+|---|---|
+| `live-session-adapter.js` | Sole presentation-facing orchestration facade for authoritative Original, playback views, fork, intervention, Alternate continuation, integrity, and comparison. |
+| `live-view-models.js` | Immutable boundary-safe world, NPC, event, and outcome display projections. |
+| `branch-comparison.js` | Pure integrity-gated Original/Alternate comparison and typed causal/comparison links. |
+| `live-presentation.js` | Live workspace, timeline, inspectors, fork/intervention, branch switching, comparison, loading/error, and accessibility presentation. |
+| `demo-path-config.js` | Explicit approved deterministic demo intervention and expected outcomes. |
+| `scripts/find-demo-path.js` | Development-only deterministic candidate evaluator. |
+| `tests/phase8-integration.test.js` | Protected hashes, adapter/view/comparison correctness, demo regression, integration boundary, and UI contract. |
+| `docs/DEMO_PATH.md` | Sub-three-minute presenter path and recovery script. |
+| `docs/PHASE_8_VERIFICATION.md` | Phase 8 automated, deterministic, architectural, and browser evidence. |
+| `README.md` | Local run, verification, and architecture entry point. |
 
 ## Directory tree
 

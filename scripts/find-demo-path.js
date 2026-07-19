@@ -28,23 +28,27 @@ function requestFor(candidate, index) {
 }
 
 function evaluate(candidate, index) {
-  const adapter = adapterApi.createLiveSession();
-  adapter.forkAt(candidate.turn);
-  adapter.applyIntervention(requestFor(candidate, index));
-  adapter.completeAlternate();
-  const comparison = adapter.compare();
-  const outcomeChanges = ["medical", "truth", "social"].filter((key) => comparison.outcomes.original[key] !== comparison.outcomes.alternate[key]).length;
-  const antidoteChanged = JSON.stringify(comparison.deltas.antidote.original) !== JSON.stringify(comparison.deltas.antidote.alternate);
-  const score = outcomeChanges * 100 + (antidoteChanged ? 40 : 0) + Math.min(comparison.changedIntents.length, 30) + Math.min(comparison.deltas.trust.length, 10);
-  return {
-    score,
-    candidate,
-    outcomeChanges,
-    antidoteChanged,
-    changedIntents: comparison.changedIntents.length,
-    trustChanges: comparison.deltas.trust.length,
-    outcomes: comparison.outcomes
-  };
+  try {
+    const adapter = adapterApi.createLiveSession();
+    adapter.forkAt(candidate.turn);
+    adapter.applyIntervention(requestFor(candidate, index));
+    adapter.completeAlternate();
+    const comparison = adapter.compare();
+    const outcomeChanges = ["medical", "truth", "social"].filter((key) => comparison.outcomes.original[key] !== comparison.outcomes.alternate[key]).length;
+    const antidoteChanged = JSON.stringify(comparison.deltas.antidote.original) !== JSON.stringify(comparison.deltas.antidote.alternate);
+    const score = outcomeChanges * 100 + (antidoteChanged ? 40 : 0) + Math.min(comparison.changedIntents.length, 30) + Math.min(comparison.deltas.trust.length, 10);
+    return {
+      score,
+      candidate,
+      outcomeChanges,
+      antidoteChanged,
+      changedIntents: comparison.changedIntents.length,
+      trustChanges: comparison.deltas.trust.length,
+      outcomes: comparison.outcomes
+    };
+  } catch (error) {
+    return { score: -1, candidate, rejected: true, reason: error.message };
+  }
 }
 
 const ranked = candidates.map(evaluate).sort((left, right) => right.score - left.score || left.candidate.turn - right.candidate.turn);
