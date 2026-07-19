@@ -124,3 +124,26 @@ test("Live adapter reports fork and intervention failures without mutating the O
   assert.throws(() => adapter.applyIntervention({ category: "Information" }), (error) => error.code === "INTERVENTION_FAILED");
   assert.equal(JSON.stringify(adapter.getSession().original), before);
 });
+
+test("Browser entry loads Recorded first and places Live behind the presentation adapter", () => {
+  const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
+  const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const livePresentation = fs.readFileSync(path.join(root, "live-presentation.js"), "utf8");
+  assert.match(html, /recorded-data\.js[\s\S]*world-engine\.js[\s\S]*live-session-adapter\.js[\s\S]*live-presentation\.js[\s\S]*app\.js/);
+  assert.doesNotMatch(app, /FORKED_FATES_WORLD|FORKED_FATES_DECISION|resolveTurn|runAutonomousOriginal/);
+  assert.doesNotMatch(livePresentation, /FORKED_FATES_WORLD|FORKED_FATES_DECISION|resolveTurn|runAutonomousOriginal/);
+  assert.match(app, /FORKED_FATES_LIVE_PRESENTATION/);
+  assert.match(livePresentation, /adapterApi\.createLiveSession\(\)/);
+});
+
+test("Live product surface includes complete playback, fork, intervention, branch, and comparison controls", () => {
+  const source = fs.readFileSync(path.join(root, "live-presentation.js"), "utf8");
+  for (const action of [
+    "live-step", "live-run", "live-pause", "restart-live", "open-fork", "apply-intervention",
+    "resolve-alternate", "switch-branch", "open-comparison", "jump-comparison-event", "use-recorded"
+  ]) assert.match(source, new RegExp(`data-action=\\"${action}\\"|action === \\"${action}\\"`));
+  for (const category of ["Information", "ItemTransfer", "EnvironmentalEvent"]) assert.match(source, new RegExp(category));
+  assert.match(source, /owned perspective/i);
+  assert.match(source, /comparison-only/i);
+  assert.match(source, /Original stays immutable/i);
+});

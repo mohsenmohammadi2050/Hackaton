@@ -82,6 +82,19 @@
       return viewModels.createTimelineView(timeline, { boundaryId: cursors[branch] || initialBoundaryId(timeline) });
     }
 
+    function viewAt(branch, boundaryId) {
+      return viewModels.createTimelineView(timelineFor(branch), { boundaryId });
+    }
+
+    function boundaryList(branch = "original") {
+      return Object.freeze(timelineFor(branch).boundaries.map((boundary) => Object.freeze({
+        id: boundary.id,
+        turn: boundary.turn,
+        classification: boundary.classification,
+        eventCount: boundary.eventCount
+      })));
+    }
+
     function seekBoundary(branch, boundaryId) {
       const timeline = timelineFor(branch);
       if (boundaryPosition(timeline, boundaryId) < 0) throw new LiveSessionError("BOUNDARY_UNAVAILABLE", `Boundary ${boundaryId} is not complete in ${branch}.`);
@@ -165,6 +178,8 @@
     return Object.freeze({
       version: ADAPTER_VERSION,
       currentView,
+      viewAt,
+      boundaryList,
       seekBoundary,
       seekTurn,
       step,

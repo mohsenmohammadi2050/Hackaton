@@ -16,10 +16,7 @@ const APPROVED_PHASE_7_1_RUN_SHA256 = "6d9dfe9b9f628bf83a4f8fda4d39452260872c978
 const APPROVED_ARTIFACT_SHA256 = Object.freeze({
   "npc-agents.js": "c85f0ec1dcca49e6139b03b44702f911a2b85698ea1e2c9093119588825d8704",
   "world-scenario.js": "8ec05d2924a05415613f4ee4a1b22b69f3aa7ee6040f7a210f048aeb19123abd",
-  "recorded-data.js": "365e724d551eab0e78299e70e748616f667815b34c92cb033f0e0b2b88065a62",
-  "app.js": "718d08d3327293eaf0a1f9b11469f72d36269146cd2127ed6687c004f8b71d96",
-  "index.html": "4b6a299bc821425953f16ca32ce56fefddf38e2c42960577cd0fef9bce901b01",
-  "styles.css": "0550f39adb5b16dee08a4093227257dbf07b7bbfa43e745652abe2d9f7c62210"
+  "recorded-data.js": "365e724d551eab0e78299e70e748616f667815b34c92cb033f0e0b2b88065a62"
 });
 
 function sha256(value) {
@@ -30,7 +27,7 @@ function run(provider) {
   return decision.runAutonomousOriginal(scenario, provider);
 }
 
-test("Approved policy, Recorded, scenario, and UI artifacts remain byte-for-byte unchanged", () => {
+test("Approved policy, Recorded, and scenario artifacts remain byte-for-byte unchanged", () => {
   for (const [relativePath, approvedHash] of Object.entries(APPROVED_ARTIFACT_SHA256)) {
     assert.equal(sha256(fs.readFileSync(path.join(root, relativePath))), approvedHash, `${relativePath} changed`);
   }

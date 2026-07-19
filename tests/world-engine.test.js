@@ -62,7 +62,7 @@ test("Recorded, World, and Presentation layers have one-way-free production boun
   const presentation = read("app.js");
   const world = `${read("world-scenario.js")}\n${read("world-engine.js")}`;
 
-  assert.doesNotMatch(entry, /world-(?:scenario|engine)\.js/);
+  assert.match(entry, /recorded-data\.js[\s\S]*world-scenario\.js[\s\S]*world-engine\.js[\s\S]*live-session-adapter\.js[\s\S]*app\.js/);
   assert.doesNotMatch(recorded, /FORKED_FATES_WORLD|world-engine|world-scenario/);
   assert.doesNotMatch(presentation, /FORKED_FATES_WORLD|world-engine|world-scenario/);
   assert.doesNotMatch(world, /FORKED_FATES_PHASE1|recorded-data|innerHTML|document\.|renderWorkspace/);

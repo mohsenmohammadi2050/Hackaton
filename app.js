@@ -11,6 +11,7 @@
 
   const state = {
     screen: "start",
+    mode: "recorded",
     currentTurn: 0,
     selectedTurn: 0,
     isRunning: false,
@@ -18,6 +19,7 @@
   };
 
   let runTimer = null;
+  let livePresentation = null;
 
   const characterEntries = Object.entries(data.characters);
   const locationEntries = Object.entries(data.locations);
@@ -62,14 +64,14 @@
             </div>
           </div>
           <div class="start-actions">
-            <button class="button button-primary" type="button" data-action="open-briefing">
+            <button class="button button-primary" type="button" data-action="open-briefing" data-mode="live">
               Begin The Last Antidote <span aria-hidden="true">→</span>
             </button>
             <button class="button button-secondary" type="button" data-action="watch-recorded">
               <span class="record-dot" aria-hidden="true"></span> Watch recorded demonstration
             </button>
           </div>
-          <p class="build-note">Phase 2 · complete Recorded Original</p>
+          <p class="build-note">Live simulation + immutable Recorded Original</p>
         </div>
         <aside class="start-art" aria-label="The Last Antidote scenario motif">
           <div class="vial-glow" aria-hidden="true">
@@ -83,6 +85,7 @@
   }
 
   function renderBriefing() {
+    const isLive = state.mode === "live";
     const cast = characterEntries.map(([id, npc]) => `
       <article class="brief-card">
         <div class="portrait portrait-${escapeHtml(npc.color)}" aria-hidden="true">${escapeHtml(npc.initials)}</div>
@@ -98,7 +101,7 @@
       <section class="screen briefing-screen" aria-labelledby="briefing-title">
         <header class="briefing-header">
           <button class="text-button" type="button" data-action="back-start"><span aria-hidden="true">←</span> Back</button>
-          <div class="mode-pill"><span class="record-dot" aria-hidden="true"></span> Recorded preview</div>
+          <div class="mode-pill ${isLive ? "mode-live" : ""}"><span class="record-dot" aria-hidden="true"></span> ${isLive ? "Live simulation" : "Recorded preview"}</div>
         </header>
         <div class="briefing-hero">
           <div>
@@ -124,15 +127,19 @@
         <div class="briefing-footer">
           <div class="briefing-note">
             <span class="note-icon" aria-hidden="true">i</span>
-            <p><strong>Director View</strong> lets you inspect decisions and character perspectives. In later phases, you will fork a completed turn and introduce one new piece of information.</p>
+            <p><strong>Perspective view</strong> lets you inspect each character's owned memories, beliefs, trust, and declared decisions without revealing hidden world truth.</p>
           </div>
-          <button class="button button-primary" type="button" data-action="enter-world">Enter world <span aria-hidden="true">→</span></button>
+          <button class="button button-primary" type="button" data-action="enter-world">${isLive ? "Start live simulation" : "Enter recorded world"} <span aria-hidden="true">→</span></button>
         </div>
       </section>
     `;
   }
 
   function renderWorkspace() {
+    if (state.mode === "live") {
+      renderLiveWorkspace();
+      return;
+    }
     const snapshot = data.snapshots[state.selectedTurn];
     const currentSnapshot = data.snapshots[state.currentTurn];
     const isHistorical = state.selectedTurn !== state.currentTurn;
@@ -196,6 +203,11 @@
         </div>
       </section>
     `;
+  }
+
+  function renderLiveWorkspace() {
+    if (livePresentation) livePresentation.render();
+    else startLiveSession();
   }
 
   function renderLocations(snapshot) {
@@ -584,12 +596,46 @@
     }
   }
 
+  function startLiveSession() {
+    stopRunTimer();
+    state.screen = "workspace";
+    const presentationApi = window.FORKED_FATES_LIVE_PRESENTATION;
+    if (!presentationApi || typeof presentationApi.create !== "function") {
+      app.innerHTML = `
+        <section class="live-state-screen error-state" aria-labelledby="live-unavailable-title">
+          <span class="error-glyph" aria-hidden="true">!</span>
+          <p class="eyebrow">Recorded fallback available</p>
+          <h1 id="live-unavailable-title">Live mode did not load</h1>
+          <p>The immutable Recorded Original is still independently executable.</p>
+          <button class="button button-primary" type="button" data-action="use-recorded">Watch Recorded Original</button>
+        </section>`;
+      return;
+    }
+    livePresentation = presentationApi.create({
+      window,
+      document,
+      app,
+      announcer,
+      escapeHtml,
+      onUseRecorded() {
+        state.mode = "recorded";
+        livePresentation = null;
+        restartSession();
+      }
+    });
+    livePresentation.start();
+  }
+
   app.addEventListener("click", (event) => {
     const control = event.target.closest("[data-action]");
     if (!control) return;
     const action = control.dataset.action;
 
+    if (state.mode === "live" && state.screen === "workspace" && livePresentation?.handleAction(control)) {
+      return;
+    }
     if (action === "open-briefing" || action === "watch-recorded") {
+      state.mode = action === "watch-recorded" ? "recorded" : (control.dataset.mode || "recorded");
       state.screen = "briefing";
       renderBriefing();
       document.getElementById("main-content").focus();
@@ -602,8 +648,15 @@
     }
     if (action === "enter-world") {
       state.screen = "workspace";
-      restartSession();
+      if (state.mode === "live") startLiveSession();
+      else restartSession();
       document.getElementById("main-content").focus();
+      return;
+    }
+    if (action === "use-recorded") {
+      state.mode = "recorded";
+      livePresentation = null;
+      restartSession();
       return;
     }
     if (action === "restart") {

@@ -58,12 +58,14 @@ function candidate(projection, actorId, action, details = {}) {
 
 test("Decision Layer is isolated from Recorded and Presentation while depending on the World Engine only", () => {
   const recorded = read("recorded-data.js");
-  const presentation = `${read("index.html")}\n${read("app.js")}\n${read("styles.css")}`;
+  const presentation = `${read("app.js")}\n${read("live-presentation.js")}\n${read("styles.css")}`;
+  const integration = read("live-session-adapter.js");
   const world = `${read("world-scenario.js")}\n${read("world-engine.js")}`;
   const agents = `${read("decision-layer.js")}\n${read("decision-providers.js")}\n${read("npc-agents.js")}`;
 
   assert.doesNotMatch(recorded, /decision-layer|npc-agents|FORKED_FATES_DECISION/);
-  assert.doesNotMatch(presentation, /decision-layer|npc-agents|FORKED_FATES_DECISION|world-engine|world-scenario/);
+  assert.doesNotMatch(presentation, /decision-layer|npc-agents|FORKED_FATES_DECISION|world-engine|world-scenario|FORKED_FATES_WORLD/);
+  assert.match(integration, /live-view-models|branch-comparison|timeline-fork-engine/);
   assert.doesNotMatch(world, /decision-layer|npc-agents|FORKED_FATES_DECISION/);
   assert.doesNotMatch(agents, /recorded-data|FORKED_FATES_PHASE1|innerHTML|document\.|renderWorkspace|originalIntents/);
   assert.match(read("decision-layer.js"), /require\("\.\/world-engine"\)/);
