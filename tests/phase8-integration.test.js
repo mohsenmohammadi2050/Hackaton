@@ -1,0 +1,126 @@
+"use strict";
+
+const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
+const fs = require("node:fs");
+const path = require("node:path");
+const test = require("node:test");
+
+const root = path.resolve(__dirname, "..");
+const adapterApi = require(path.join(root, "live-session-adapter.js"));
+const comparisonApi = require(path.join(root, "branch-comparison.js"));
+const demo = require(path.join(root, "demo-path-config.js"));
+
+const ORIGINAL_SHA256 = "6d9dfe9b9f628bf83a4f8fda4d39452260872c978335ddf7caabb9eb44a2501f";
+const PROTECTED = Object.freeze({
+  "world-scenario.js": "8ec05d2924a05415613f4ee4a1b22b69f3aa7ee6040f7a210f048aeb19123abd",
+  "world-engine.js": "06122c845a42f4711ddbd997c6c399d56feadad83e062b97376a841bed6d480d",
+  "decision-layer.js": "e03c95ed1e6deaff1e9e093e07fbc811d729758694caf915b40a1d2a40781155",
+  "decision-providers.js": "b7e64fe16b3370f77fc3e39eb9513ddd402fb82fc761986608f6f2a4a69b677f",
+  "npc-agents.js": "c85f0ec1dcca49e6139b03b44702f911a2b85698ea1e2c9093119588825d8704",
+  "intervention-layer.js": "6049a340aeafb9499f58dd22235ecd798e31a7b23548e820ffd30f9ccdacd00a",
+  "timeline-fork-engine.js": "544f5ba5f38d7d1d07e4fb01923e1b893d3565b951ee1edcf2c979262c10c96f",
+  "timeline-integrity.js": "78d322ec63178493748c88191f2912758d8f8f1f1c578da9f8413e6b63caae72",
+  "recorded-data.js": "365e724d551eab0e78299e70e748616f667815b34c92cb033f0e0b2b88065a62"
+});
+
+function sha256(value) { return crypto.createHash("sha256").update(value).digest("hex"); }
+
+function completedDemo() {
+  const adapter = adapterApi.createLiveSession();
+  adapter.forkAt(demo.forkTurn);
+  adapter.applyIntervention(demo.intervention);
+  adapter.completeAlternate();
+  return adapter;
+}
+
+test("Phase 8 preserves every protected approved runtime and Recorded artifact byte-for-byte", () => {
+  for (const [file, expected] of Object.entries(PROTECTED)) {
+    assert.equal(sha256(fs.readFileSync(path.join(root, file))), expected, `${file} changed`);
+  }
+});
+
+test("Live adapter prepares the approved deterministic Original behind one presentation boundary", () => {
+  const first = adapterApi.createLiveSession();
+  const second = adapterApi.createLiveSession();
+  assert.equal(sha256(JSON.stringify({ state: first.getSession().original.state, turns: first.getSession().original.turns })), ORIGINAL_SHA256);
+  assert.deepEqual(first.getSession().original, second.getSession().original);
+  assert.equal(first.currentView().boundary.turn, 0);
+  assert.equal(first.currentView().branch.kind, "Original");
+  assert.equal(first.validate().valid, true);
+});
+
+test("Live playback advances only across frozen completed boundaries and supports historical seek", () => {
+  const adapter = adapterApi.createLiveSession();
+  const one = adapter.step();
+  assert.equal(one.boundary.turn, 1);
+  assert.equal(one.boundary.classification, "turn-close");
+  assert.equal(one.events.length, one.boundary.eventCount);
+  assert.ok(one.events.every((event) => event.turn <= one.boundary.turn));
+  assert.ok(Object.isFrozen(one));
+  assert.equal(adapter.seekTurn("original", 0).boundary.turn, 0);
+  assert.equal(adapter.currentView().clock.turn, 0);
+});
+
+test("NPC view models expose one NPC's owned memories and beliefs without presentation mutation", () => {
+  const adapter = adapterApi.createLiveSession();
+  const view = adapter.seekTurn("original", 6);
+  for (const [npcId, npc] of Object.entries(view.npcs)) {
+    assert.ok(npc.memories.every((memory) => memory.id.includes(npcId) || memory.id.startsWith("mem-start-")));
+    assert.ok(npc.memories.every((memory) => memory.turn <= 6));
+    assert.ok(npc.beliefs.every((belief) => belief.updatedTurn <= 6));
+  }
+  assert.throws(() => { view.npcs.mara.trust.orin = 100; }, TypeError);
+});
+
+test("The approved demo intervention changes later autonomous decisions while Original stays immutable", () => {
+  const adapter = adapterApi.createLiveSession();
+  const before = JSON.stringify(adapter.getSession().original);
+  adapter.forkAt(demo.forkTurn);
+  adapter.applyIntervention(demo.intervention);
+  adapter.completeAlternate();
+  assert.equal(JSON.stringify(adapter.getSession().original), before);
+  assert.equal(adapter.validate().valid, true);
+  const result = adapter.compare();
+  assert.equal(result.changedIntents[0].turn, demo.expected.firstChangedDecisionTurn);
+  assert.deepEqual(
+    { medical: result.outcomes.original.medical, truth: result.outcomes.original.truth, social: result.outcomes.original.social },
+    demo.expected.originalOutcome
+  );
+  assert.deepEqual(
+    { medical: result.outcomes.alternate.medical, truth: result.outcomes.alternate.truth, social: result.outcomes.alternate.social },
+    demo.expected.alternateOutcome
+  );
+  assert.equal(result.deltas.antidote.original.possessorId, demo.expected.originalAntidotePossessorId);
+  assert.equal(result.deltas.antidote.alternate.possessorId, demo.expected.alternateAntidotePossessorId);
+});
+
+test("Pure comparison is deterministic, immutable, and labels non-authoritative links", () => {
+  const adapter = completedDemo();
+  const first = adapter.compare();
+  const second = comparisonApi.compareTimelineSession(adapter.getSession());
+  assert.deepEqual(first, second);
+  assert.ok(Object.isFrozen(first));
+  assert.ok(first.causalSupport.alternate.edges.every((edge) => edge.kind === "authoritative-cause"));
+  assert.ok(first.causalSupport.comparisonLinks.every((edge) => edge.kind === "comparison-only"));
+  assert.match(first.causalSupport.comparisonLinks[0].label, /not asserted as an authoritative/);
+});
+
+test("Comparison rejects an incomplete or integrity-invalid session", () => {
+  const adapter = adapterApi.createLiveSession();
+  assert.throws(() => adapter.compare(), /completed Alternate/);
+  const completed = completedDemo().getSession();
+  const corrupted = JSON.parse(JSON.stringify(completed));
+  corrupted.alternate.state.events[1].causes = ["missing-event"];
+  assert.throws(() => comparisonApi.compareTimelineSession(corrupted), /unresolved or cross-branch/);
+});
+
+test("Live adapter reports fork and intervention failures without mutating the Original", () => {
+  const adapter = adapterApi.createLiveSession();
+  const before = JSON.stringify(adapter.getSession().original);
+  assert.throws(() => adapter.forkAt(11), (error) => error.code === "FORK_FAILED");
+  assert.equal(JSON.stringify(adapter.getSession().original), before);
+  adapter.forkAt(0);
+  assert.throws(() => adapter.applyIntervention({ category: "Information" }), (error) => error.code === "INTERVENTION_FAILED");
+  assert.equal(JSON.stringify(adapter.getSession().original), before);
+});
