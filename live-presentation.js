@@ -95,6 +95,7 @@
       resolving: false,
       pauseRequested: false,
       aiStatus: null,
+      providerLabel: "AI Live",
       loading: false,
       error: null,
       errorCode: null,
@@ -138,6 +139,7 @@
               error.code = "AI_NOT_CONFIGURED";
               throw error;
             }
+            ui.providerLabel = configuration.displayName || "AI Live";
             adapter = aiAdapterApi.createAiLiveSession(providerApi.createProvider(), {
               diagnosticLogger: configuration.diagnosticLogging && win.console?.info
                 ? (record) => win.console.info("[Forked Fates AI decision]", record)
@@ -204,7 +206,7 @@
               <div class="status-cell"><span>Branch</span><strong>${view.branch.kind}</strong></div>
               <div class="status-cell"><span>Completed turn</span><strong>${frontier.clock.turn} <small>/ 12 · ${frontier.clock.turnsRemaining} remain</small></strong></div>
               <div class="status-cell status-patient ${patientLost ? "status-lost" : ""}"><span>Patient</span><strong><i aria-hidden="true"></i> ${escape(frontier.patient.status)}</strong></div>
-              <div class="mode-pill mode-pill-strong ${mode === "ai-live" ? "mode-live" : ""}"><span class="live-pulse" aria-hidden="true"></span> ${mode === "ai-live" ? "AI Live" : "Deterministic"}</div>
+              <div class="mode-pill mode-pill-strong ${mode === "ai-live" ? "mode-live" : ""}"><span class="live-pulse" aria-hidden="true"></span> ${mode === "ai-live" ? escape(ui.providerLabel) : "Deterministic"}</div>
             </div>
             <button class="icon-button" type="button" data-action="restart-live" title="Restart Live session" aria-label="Restart Live session">↻</button>
           </header>
@@ -281,7 +283,7 @@
       const pausedStatus = typeof ui.aiStatus === "string" && ui.aiStatus.startsWith("Paused after Turn") ? ui.aiStatus : null;
       const status = awaitingIntervention ? "Awaiting exactly one typed intervention" : complete ? "Simulation complete" : ui.resolving ? `Resolving Turn ${frontier.boundary.turn + 1}…` : ui.running ? "Auto-running" : pausedStatus || `Ready at Turn ${frontier.boundary.turn}`;
       const disabled = ui.running || ui.resolving || complete || awaitingIntervention || deterministicPreparation;
-      return `<div class="playback-control"><div class="playback-status"><span>${view.branch.kind} · ${mode === "ai-live" ? "AI Live" : "deterministic"}</span><strong>${status}</strong><button class="follow-toggle" type="button" data-action="toggle-follow" aria-pressed="${ui.followLive}">Follow live events: ${ui.followLive ? "On" : "Off"}</button></div><div class="playback-buttons" role="group" aria-label="Simulation playback controls"><button class="button button-compact" title="Resolve one decision round and stop." data-action="live-step" ${disabled ? "disabled" : ""}>Next Turn →</button><button class="button button-compact button-run" title="Continue automatically until paused or completed." data-action="live-run" ${disabled ? "disabled" : ""}>Run to End ▶</button><button class="button button-compact button-pause" title="Stop after the current turn finishes." data-action="live-pause" ${ui.running ? "" : "disabled"}>Pause Ⅱ</button></div>${forkable ? `<button class="button button-fork" data-action="open-fork">Fork from turn ${view.boundary.turn} <span aria-hidden="true">⑂</span></button>` : ""}${deterministicPreparation ? `<button class="button button-primary button-resolve" data-action="resolve-alternate">Prepare Alternate future</button>` : ""}${canCompare() ? `<button class="button button-primary button-resolve" data-action="open-comparison">Compare outcomes</button>` : ""}</div>`;
+      return `<div class="playback-control"><div class="playback-status"><span>${view.branch.kind} · ${mode === "ai-live" ? escape(ui.providerLabel) : "deterministic"}</span><strong>${status}</strong><button class="follow-toggle" type="button" data-action="toggle-follow" aria-pressed="${ui.followLive}">Follow live events: ${ui.followLive ? "On" : "Off"}</button></div><div class="playback-buttons" role="group" aria-label="Simulation playback controls"><button class="button button-compact" title="Resolve one decision round and stop." data-action="live-step" ${disabled ? "disabled" : ""}>Next Turn →</button><button class="button button-compact button-run" title="Continue automatically until paused or completed." data-action="live-run" ${disabled ? "disabled" : ""}>Run to End ▶</button><button class="button button-compact button-pause" title="Stop after the current turn finishes." data-action="live-pause" ${ui.running ? "" : "disabled"}>Pause Ⅱ</button></div>${forkable ? `<button class="button button-fork" data-action="open-fork">Fork from turn ${view.boundary.turn} <span aria-hidden="true">⑂</span></button>` : ""}${deterministicPreparation ? `<button class="button button-primary button-resolve" data-action="resolve-alternate">Prepare Alternate future</button>` : ""}${canCompare() ? `<button class="button button-primary button-resolve" data-action="open-comparison">Compare outcomes</button>` : ""}</div>`;
     }
 
     function renderInspector(view) {

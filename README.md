@@ -13,18 +13,29 @@ notepad .env
 npm.cmd start
 ```
 
-In `.env`, set:
+Create a Cerebras Inference API key in the [Cerebras Cloud console](https://cloud.cerebras.ai/), then set:
 
 ```env
-AI_PROVIDER_BASE_URL=https://your-openai-compatible-provider.example/v1
-AI_PROVIDER_API_KEY=your-key-if-required
-AI_MODEL=your-model-name
+AI_PROVIDER_TYPE=cerebras
+AI_PROVIDER_BASE_URL=https://api.cerebras.ai/v1
+AI_PROVIDER_API_KEY=your-cerebras-key
+AI_MODEL=gpt-oss-120b
+AI_STRUCTURED_OUTPUT_MODE=json_schema
+AI_REASONING_ENABLED=true
+AI_REASONING_EFFORT=medium
+AI_DIAGNOSTIC_LOGGING=true
+AI_MAX_OUTPUT_TOKENS=800
+AI_INPUT_TOKEN_WARNING=6000
 AI_REQUEST_TIMEOUT_MS=60000
 AI_MAX_RETRIES=2
 PORT=8080
 ```
 
-Open `http://127.0.0.1:8080/`. Provider secrets stay in the local Node process and are never sent to browser code or stored in timelines.
+Open `http://127.0.0.1:8080/` and verify the AI Live workspace shows **Cerebras · gpt-oss-120b**. Provider secrets stay in the local Node process and are never sent to browser code or stored in timelines.
+
+The [published Cerebras rate-limit table](https://inference-docs.cerebras.ai/support/rate-limits) currently lists the `gpt-oss-120b` free tier at 64K tokens per minute, 30 requests per minute, 1M tokens per day, and 14.4K requests per day. Limits can change; the exact organization and project limits displayed in the Cerebras console are authoritative.
+
+OpenRouter remains available by setting `AI_PROVIDER_TYPE=openrouter` with its base URL, key, and model. Other conservative OpenAI-compatible endpoints may use `AI_PROVIDER_TYPE=generic-openai`; provider-specific reasoning parameters are intentionally not guessed for generic transports.
 
 To use only **Deterministic Simulation** or **Recorded Demo**, provider variables may remain empty; start the same local server with `npm.cmd start` and select either mode.
 
@@ -35,6 +46,15 @@ To use only **Deterministic Simulation** or **Recorded Demo**, provider variable
 - **Recorded Demo** is immutable authored playback, not a video. It reads `recorded-data.js` directly and remains independently executable without the World or provider layers.
 
 Each AI request contains only that character's identity, goals, location, inventory, beliefs, trust, current observations, legal options, and at most six owned memories. It never contains hidden world truth or another character's private state.
+
+## Cerebras final-acceptance path
+
+1. Complete Original Turns 1–3 in AI Live.
+2. Fork completed Turn 1 or Turn 2.
+3. Apply an Information intervention to Mara.
+4. Resolve the Alternate and switch between both branches.
+5. Complete both branches and open comparison.
+6. Inspect the authoritative terminal outcome and decisive event.
 
 ## Fork and intervention flow
 

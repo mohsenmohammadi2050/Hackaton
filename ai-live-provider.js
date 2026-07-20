@@ -62,8 +62,11 @@
     const payload = await response.json().catch(() => null);
     if (!response.ok || !payload) throw new AiProviderError(payload?.error?.code || "AI_PROVIDER_ERROR", payload?.error?.message || "AI provider status is unavailable.");
     return Object.freeze({
-      configured: Boolean(payload.configured), model: payload.model || null,
+      configured: Boolean(payload.configured), providerType: payload.providerType || null,
+      providerName: payload.providerName || null, model: payload.model || null,
+      displayName: payload.displayName || [payload.providerName, payload.model].filter(Boolean).join(" · ") || null,
       reasoningRequested: Boolean(payload.reasoningRequested), reasoningEffort: payload.reasoningEffort || null,
+      maxOutputTokens: payload.maxOutputTokens || null, inputTokenWarning: payload.inputTokenWarning || null,
       diagnosticLogging: Boolean(payload.diagnosticLogging), missing: Object.freeze((payload.missing || []).slice())
     });
   }

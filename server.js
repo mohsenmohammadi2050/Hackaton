@@ -7,6 +7,8 @@ const path = require("node:path");
 const intentContract = require("./provider-intent-contract");
 
 const MAX_REQUEST_BYTES = 128 * 1024;
+const SUPPORTED_PROVIDER_TYPES = Object.freeze(["openrouter", "cerebras", "generic-openai"]);
+const PROVIDER_NAMES = Object.freeze({ openrouter: "OpenRouter", cerebras: "Cerebras", "generic-openai": "OpenAI-compatible" });
 const ALLOWED_PROJECTION_FIELDS = new Set([
   "projectionVersion", "scenarioId", "branchId", "turn", "turnsRemaining", "patient",
   "currentLocation", "locations", "knownCharacters", "coLocatedCharacters", "self",
@@ -14,6 +16,7 @@ const ALLOWED_PROJECTION_FIELDS = new Set([
   "scenarioKnowledge", "observations", "previousAction", "previousResult"
 ]);
 const REASONING_EFFORTS = Object.freeze(["minimal", "low", "medium", "high", "xhigh", "max"]);
+const CEREBRAS_REASONING_EFFORTS = Object.freeze(["low", "medium", "high"]);
 const STATIC_TYPES = Object.freeze({
   ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8",
@@ -33,13 +36,35 @@ function parseEnvFile(filePath) {
     }));
 }
 
+function providerTypeFromUrl(baseUrl) {
+  try {
+    const hostname = new URL(baseUrl).hostname.toLowerCase();
+    if (hostname === "openrouter.ai" || hostname.endsWith(".openrouter.ai")) return "openrouter";
+    if (hostname === "cerebras.ai" || hostname.endsWith(".cerebras.ai")) return "cerebras";
+  } catch { /* A missing URL is reported by configurationStatus. */ }
+  return "generic-openai";
+}
+
+function resolveProviderType(explicitType, baseUrl) {
+  const requested = String(explicitType || "").trim().toLowerCase();
+  if (!requested) return providerTypeFromUrl(baseUrl);
+  if (!SUPPORTED_PROVIDER_TYPES.includes(requested)) {
+    throw Object.assign(new Error(`Unsupported AI_PROVIDER_TYPE ${requested}. Supported values: ${SUPPORTED_PROVIDER_TYPES.join(", ")}.`), { code: "AI_PROVIDER_TYPE_UNSUPPORTED" });
+  }
+  return requested;
+}
+
 function loadConfiguration(environment = process.env, rootDir = __dirname) {
   const values = Object.assign({}, parseEnvFile(path.join(rootDir, ".env")), environment);
+  const baseUrl = String(values.AI_PROVIDER_BASE_URL || "").replace(/\/$/, "");
   const timeoutMs = Number(values.AI_REQUEST_TIMEOUT_MS || 60000);
   const maxRetries = Number(values.AI_MAX_RETRIES || 2);
+  const maxOutputTokens = Number(values.AI_MAX_OUTPUT_TOKENS || 800);
+  const inputTokenWarning = Number(values.AI_INPUT_TOKEN_WARNING || 6000);
   const reasoningValue = String(values.AI_REASONING_ENABLED || "false").toLowerCase();
   return Object.freeze({
-    baseUrl: String(values.AI_PROVIDER_BASE_URL || "").replace(/\/$/, ""),
+    providerType: resolveProviderType(values.AI_PROVIDER_TYPE, baseUrl),
+    baseUrl,
     apiKey: String(values.AI_PROVIDER_API_KEY || ""),
     model: String(values.AI_MODEL || ""),
     timeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 60000,
@@ -48,6 +73,10 @@ function loadConfiguration(environment = process.env, rootDir = __dirname) {
     reasoningEnabled: reasoningValue === "true",
     reasoningConfigurationValid: ["true", "false"].includes(reasoningValue),
     reasoningEffort: String(values.AI_REASONING_EFFORT || "medium").toLowerCase(),
+    maxOutputTokens: Number.isInteger(maxOutputTokens) && maxOutputTokens > 0 ? maxOutputTokens : 800,
+    maxOutputTokensConfigurationValid: Number.isInteger(maxOutputTokens) && maxOutputTokens > 0,
+    inputTokenWarning: Number.isInteger(inputTokenWarning) && inputTokenWarning > 0 ? inputTokenWarning : 6000,
+    inputTokenWarningConfigurationValid: Number.isInteger(inputTokenWarning) && inputTokenWarning > 0,
     diagnosticLogging: String(values.AI_DIAGNOSTIC_LOGGING || "").toLowerCase() === "true" || String(values.NODE_ENV || "").toLowerCase() === "development",
     port: Number(values.PORT || 8080)
   });
@@ -55,15 +84,27 @@ function loadConfiguration(environment = process.env, rootDir = __dirname) {
 
 function configurationStatus(configuration) {
   const missing = [];
+  let providerType;
+  try { providerType = resolveProviderType(configuration.providerType, configuration.baseUrl); }
+  catch (error) { missing.push(error.message); providerType = null; }
   if (!configuration.baseUrl) missing.push("AI_PROVIDER_BASE_URL");
   if (!configuration.model) missing.push("AI_MODEL");
+  if (["openrouter", "cerebras"].includes(providerType) && !configuration.apiKey) missing.push("AI_PROVIDER_API_KEY");
   if (!["json_schema", "json_object"].includes(configuration.structuredOutputMode || "json_schema")) missing.push("AI_STRUCTURED_OUTPUT_MODE (json_schema or json_object)");
+  if (providerType === "cerebras" && (configuration.structuredOutputMode || "json_schema") !== "json_schema") missing.push("AI_STRUCTURED_OUTPUT_MODE=json_schema for Cerebras");
   if (configuration.reasoningConfigurationValid === false) missing.push("AI_REASONING_ENABLED (true or false)");
   if (configuration.reasoningEnabled && !REASONING_EFFORTS.includes(configuration.reasoningEffort)) missing.push(`AI_REASONING_EFFORT (${REASONING_EFFORTS.join(", ")})`);
+  if (providerType === "cerebras" && configuration.reasoningEnabled && !CEREBRAS_REASONING_EFFORTS.includes(configuration.reasoningEffort)) missing.push(`AI_REASONING_EFFORT (${CEREBRAS_REASONING_EFFORTS.join(", ")}) for Cerebras`);
+  if (providerType === "generic-openai" && configuration.reasoningEnabled) missing.push("AI_REASONING_ENABLED=false for generic-openai unless a provider-specific mapper is added");
+  if (configuration.maxOutputTokensConfigurationValid === false) missing.push("AI_MAX_OUTPUT_TOKENS (positive integer)");
+  if (configuration.inputTokenWarningConfigurationValid === false) missing.push("AI_INPUT_TOKEN_WARNING (positive integer)");
+  const providerName = providerType ? PROVIDER_NAMES[providerType] : null;
   return Object.freeze({
-    configured: missing.length === 0, model: configuration.model || null,
+    configured: missing.length === 0, providerType, providerName, model: configuration.model || null,
+    displayName: providerName && configuration.model ? `${providerName} · ${configuration.model}` : providerName,
     structuredOutputMode: configuration.structuredOutputMode || "json_schema",
     reasoningRequested: Boolean(configuration.reasoningEnabled), reasoningEffort: configuration.reasoningEnabled ? configuration.reasoningEffort : null,
+    maxOutputTokens: configuration.maxOutputTokens || 800, inputTokenWarning: configuration.inputTokenWarning || 6000,
     diagnosticLogging: Boolean(configuration.diagnosticLogging), missing
   });
 }
@@ -141,10 +182,7 @@ function providerMessages(request, feedback) {
 }
 
 function isOpenRouter(baseUrl) {
-  try {
-    const hostname = new URL(baseUrl).hostname.toLowerCase();
-    return hostname === "openrouter.ai" || hostname.endsWith(".openrouter.ai");
-  } catch { return false; }
+  return providerTypeFromUrl(baseUrl) === "openrouter";
 }
 
 function responseFormatFor(request, configuration) {
@@ -157,6 +195,40 @@ function responseFormatFor(request, configuration) {
       schema: intentContract.createIntentJsonSchema(request.projection)
     }
   };
+}
+
+function mapProviderRequest(request, configuration, feedback) {
+  const providerType = resolveProviderType(configuration.providerType, configuration.baseUrl);
+  const messages = providerMessages(request, feedback);
+  const body = {
+    model: configuration.model,
+    messages,
+    response_format: responseFormatFor(request, configuration),
+    max_completion_tokens: configuration.maxOutputTokens || 800
+  };
+  const headers = { "content-type": "application/json", accept: "application/json" };
+  if (configuration.apiKey) headers.authorization = `Bearer ${configuration.apiKey}`;
+
+  if (providerType === "openrouter") {
+    body.temperature = 0.2;
+    if (configuration.reasoningEnabled) body.reasoning = { effort: configuration.reasoningEffort, exclude: true };
+    body.provider = { require_parameters: true };
+  } else if (providerType === "cerebras") {
+    headers["X-Cerebras-Version-Patch"] = "2";
+    if (configuration.reasoningEnabled) {
+      body.reasoning_effort = configuration.reasoningEffort;
+      body.reasoning_format = "hidden";
+    }
+  }
+
+  return Object.freeze({
+    providerType,
+    providerName: PROVIDER_NAMES[providerType],
+    endpoint: `${configuration.baseUrl}/chat/completions`,
+    headers: Object.freeze(headers),
+    body: Object.freeze(body),
+    estimatedInputTokens: Math.ceil(Buffer.byteLength(JSON.stringify(messages), "utf8") / 4)
+  });
 }
 
 function stableSerialize(value) {
@@ -214,23 +286,54 @@ function writeDiagnostic(configuration, record) {
   if (write) write("[Forked Fates AI provider]", Object.freeze(record));
 }
 
+function writeInputTokenWarning(configuration, record) {
+  if (!configuration.diagnosticLogging) return;
+  const logger = configuration.logger || console;
+  const write = typeof logger.warn === "function" ? logger.warn.bind(logger) : typeof logger.info === "function" ? logger.info.bind(logger) : null;
+  if (write) write("[Forked Fates AI token warning]", Object.freeze(record));
+}
+
 function structuredOutputError(configuration) {
+  const providerType = resolveProviderType(configuration.providerType, configuration.baseUrl);
+  const providerName = PROVIDER_NAMES[providerType];
   if (configuration.reasoningEnabled) {
-    return Object.assign(new Error("Configured provider/model rejected the requested reasoning and strict structured-output parameters. Choose a route supporting both, or explicitly set AI_REASONING_ENABLED=false."), { code: "AI_REASONING_UNSUPPORTED", status: 502, retryable: false });
+    return Object.assign(new Error(`${providerName} rejected the requested reasoning and strict structured-output parameters. Choose a compatible model or explicitly change the configuration.`), { code: "AI_REASONING_UNSUPPORTED", status: 502, retryable: false });
   }
   const mode = configuration.structuredOutputMode || "json_schema";
+  if (providerType === "openrouter") {
+    const openRouterMessage = mode === "json_schema"
+      ? "Configured provider/model rejected strict JSON Schema output. Choose a route that supports response_format json_schema, or explicitly set AI_STRUCTURED_OUTPUT_MODE=json_object to use validated JSON mode."
+      : "Configured provider/model rejected explicitly configured JSON object output.";
+    return Object.assign(new Error(openRouterMessage), { code: "AI_STRUCTURED_OUTPUT_UNSUPPORTED", status: 502, retryable: false });
+  }
   const message = mode === "json_schema"
-    ? "Configured provider/model rejected strict JSON Schema output. Choose a route that supports response_format json_schema, or explicitly set AI_STRUCTURED_OUTPUT_MODE=json_object to use validated JSON mode."
-    : "Configured provider/model rejected explicitly configured JSON object output.";
+    ? `${providerName} rejected strict JSON Schema output. Choose a compatible model; strict output will not be silently disabled.`
+    : `${providerName} rejected explicitly configured JSON object output.`;
   return Object.assign(new Error(message), { code: "AI_STRUCTURED_OUTPUT_UNSUPPORTED", status: 502, retryable: false });
 }
 
-function reasoningDiagnostic(configuration, envelope, openRouter) {
+function usageDiagnostic(envelope) {
+  const usage = envelope?.usage || {};
+  const promptTokens = usage.prompt_tokens ?? usage.input_tokens ?? null;
+  const completionTokens = usage.completion_tokens ?? usage.output_tokens ?? null;
+  const totalTokens = usage.total_tokens ?? (Number.isFinite(promptTokens) && Number.isFinite(completionTokens) ? promptTokens + completionTokens : null);
+  const reasoningTokens = usage.completion_tokens_details?.reasoning_tokens ?? usage.reasoning_tokens ?? null;
+  return {
+    tokenUsage: {
+      promptTokens: Number.isFinite(promptTokens) ? promptTokens : null,
+      completionTokens: Number.isFinite(completionTokens) ? completionTokens : null,
+      totalTokens: Number.isFinite(totalTokens) ? totalTokens : null,
+      reasoningTokens: Number.isFinite(reasoningTokens) ? reasoningTokens : null
+    }
+  };
+}
+
+function reasoningDiagnostic(configuration, envelope, providerType) {
   const tokens = envelope?.usage?.completion_tokens_details?.reasoning_tokens ?? envelope?.usage?.reasoning_tokens ?? null;
   return {
     reasoningRequested: Boolean(configuration.reasoningEnabled),
     reasoningEffort: configuration.reasoningEnabled ? configuration.reasoningEffort : null,
-    reasoningSupported: !configuration.reasoningEnabled ? false : openRouter || Number.isFinite(tokens) ? true : "unknown",
+    reasoningSupported: !configuration.reasoningEnabled ? false : ["openrouter", "cerebras"].includes(providerType) || Number.isFinite(tokens) ? true : "unknown",
     reasoningTokenCount: Number.isFinite(tokens) ? tokens : null
   };
 }
@@ -242,54 +345,59 @@ async function requestModelDecision(request, configuration, fetchImpl = globalTh
   let feedback = request.validationFeedback || null;
   let lastError = null;
   const projectionMeta = projectionDiagnostic(request, diagnosticTracker);
-  const openRouter = isOpenRouter(configuration.baseUrl);
+  const providerType = resolveProviderType(configuration.providerType, configuration.baseUrl);
+  const providerName = PROVIDER_NAMES[providerType];
   for (let attempt = 0; attempt <= configuration.maxRetries; attempt += 1) {
     const startedAt = Date.now();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), configuration.timeoutMs);
     try {
-      const body = { model: configuration.model, messages: providerMessages(request, feedback), temperature: 0.2, response_format: responseFormatFor(request, configuration) };
-      if (configuration.reasoningEnabled) body.reasoning = { effort: configuration.reasoningEffort, exclude: true };
-      if (openRouter) body.provider = { require_parameters: true };
-      const headers = { "content-type": "application/json", accept: "application/json" };
-      if (configuration.apiKey) headers.authorization = `Bearer ${configuration.apiKey}`;
-      const response = await fetchImpl(`${configuration.baseUrl}/chat/completions`, { method: "POST", headers, body: JSON.stringify(body), signal: controller.signal });
+      const mapped = mapProviderRequest(request, configuration, feedback);
+      if (mapped.estimatedInputTokens > (configuration.inputTokenWarning || 6000)) {
+        writeInputTokenWarning(configuration, {
+          code: "AI_INPUT_TOKEN_WARNING", provider: mapped.providerType, model: configuration.model,
+          actorId: request.actorId, branchId: projectionMeta.branchId, resolvingTurn: projectionMeta.resolvingTurn,
+          estimatedInputTokens: mapped.estimatedInputTokens, threshold: configuration.inputTokenWarning || 6000
+        });
+      }
+      const response = await fetchImpl(mapped.endpoint, { method: "POST", headers: mapped.headers, body: JSON.stringify(mapped.body), signal: controller.signal });
       const raw = await response.text();
       if (!response.ok) {
         if (response.status === 400 || response.status === 422) {
           const error = structuredOutputError(configuration);
-          writeDiagnostic(configuration, { actorId: request.actorId, attempt: request.attempt, transportAttempt: attempt + 1, model: configuration.model, ...projectionMeta, ...reasoningDiagnostic(configuration, null, false), latencyMs: Date.now() - startedAt, action: null, validationError: error.message });
+          writeDiagnostic(configuration, { provider: mapped.providerType, actorId: request.actorId, attempt: request.attempt, transportAttempt: attempt + 1, model: configuration.model, ...projectionMeta, ...reasoningDiagnostic(configuration, null, mapped.providerType), ...usageDiagnostic(null), latencyMs: Date.now() - startedAt, httpStatus: response.status, providerErrorCode: error.code, action: null, validationError: error.message });
           throw error;
         }
         const retryable = response.status === 408 || response.status === 429 || response.status >= 500;
-        const error = Object.assign(new Error(`AI provider returned HTTP ${response.status}.`), { code: "AI_HTTP_ERROR", status: 502, retryable });
+        const error = Object.assign(new Error(`${mapped.providerName} returned HTTP ${response.status}.`), { code: "AI_HTTP_ERROR", status: 502, retryable });
+        writeDiagnostic(configuration, { provider: mapped.providerType, actorId: request.actorId, attempt: request.attempt, transportAttempt: attempt + 1, model: configuration.model, ...projectionMeta, ...reasoningDiagnostic(configuration, null, mapped.providerType), ...usageDiagnostic(null), latencyMs: Date.now() - startedAt, httpStatus: response.status, providerErrorCode: error.code, action: null, validationError: error.message });
         if (!retryable || attempt >= configuration.maxRetries) throw error;
         lastError = error;
         continue;
       }
       let envelope;
-      try { envelope = JSON.parse(raw); } catch { throw Object.assign(new Error("AI provider returned invalid JSON."), { code: "AI_PROVIDER_RESPONSE", status: 502, retryable: true }); }
+      try { envelope = JSON.parse(raw); } catch { throw Object.assign(new Error(`${providerName} returned invalid JSON.`), { code: "AI_PROVIDER_RESPONSE", status: 502, retryable: true }); }
       const content = envelope?.choices?.[0]?.message?.content;
       try {
         const output = extractJsonObject(content);
-        writeDiagnostic(configuration, { actorId: request.actorId, attempt: request.attempt, transportAttempt: attempt + 1, model: configuration.model, ...projectionMeta, ...reasoningDiagnostic(configuration, envelope, openRouter), latencyMs: Date.now() - startedAt, ...normalizedModelDiagnostic(output) });
+        writeDiagnostic(configuration, { provider: mapped.providerType, actorId: request.actorId, attempt: request.attempt, transportAttempt: attempt + 1, model: configuration.model, ...projectionMeta, ...reasoningDiagnostic(configuration, envelope, mapped.providerType), ...usageDiagnostic(envelope), latencyMs: Date.now() - startedAt, httpStatus: response.status, providerErrorCode: null, ...normalizedModelDiagnostic(output) });
         return output;
       }
       catch (error) {
-        writeDiagnostic(configuration, { actorId: request.actorId, attempt: request.attempt, transportAttempt: attempt + 1, model: configuration.model, ...projectionMeta, ...reasoningDiagnostic(configuration, envelope, openRouter), latencyMs: Date.now() - startedAt, ...normalizedModelDiagnostic(content, error) });
+        writeDiagnostic(configuration, { provider: mapped.providerType, actorId: request.actorId, attempt: request.attempt, transportAttempt: attempt + 1, model: configuration.model, ...projectionMeta, ...reasoningDiagnostic(configuration, envelope, mapped.providerType), ...usageDiagnostic(envelope), latencyMs: Date.now() - startedAt, httpStatus: response.status, providerErrorCode: "INVALID_MODEL_RESPONSE", ...normalizedModelDiagnostic(content, error) });
         feedback = `Return one valid JSON object. ${error.message}`;
         lastError = Object.assign(error, { code: "INVALID_MODEL_RESPONSE", status: 502, retryable: true });
         if (attempt >= configuration.maxRetries) throw lastError;
       }
     } catch (error) {
       const normalized = error.name === "AbortError"
-        ? Object.assign(new Error(`AI provider timed out after ${configuration.timeoutMs}ms.`), { code: "AI_TIMEOUT", status: 504, retryable: true })
-        : error;
+        ? Object.assign(new Error(`${providerName} timed out after ${configuration.timeoutMs}ms.`), { code: "AI_TIMEOUT", status: 504, retryable: true })
+        : error.code ? error : Object.assign(new Error(`${providerName} request failed: ${error.message}`), { code: "AI_PROVIDER_ERROR", status: 502, retryable: true });
       lastError = normalized;
       if (attempt >= configuration.maxRetries || normalized.retryable === false) throw normalized;
     } finally { clearTimeout(timer); }
   }
-  throw lastError || Object.assign(new Error("AI provider request failed."), { code: "AI_PROVIDER_ERROR", status: 502 });
+  throw lastError || Object.assign(new Error(`${providerName} request failed.`), { code: "AI_PROVIDER_ERROR", status: 502 });
 }
 
 function sendJson(response, status, value) {
@@ -361,8 +469,12 @@ if (require.main === module) {
   server.listen(configuration.port, "127.0.0.1", () => {
     const status = configurationStatus(configuration);
     console.log(`Forked Fates listening on http://127.0.0.1:${configuration.port}`);
-    console.log(status.configured ? `AI Live configured for model ${status.model}.` : `AI Live not configured: ${status.missing.join(", ")}.`);
+    console.log(status.configured ? `AI Live configured for ${status.displayName}.` : `AI Live not configured: ${status.missing.join(", ")}.`);
   });
 }
 
-module.exports = Object.freeze({ MAX_REQUEST_BYTES, parseEnvFile, loadConfiguration, configurationStatus, validateDecisionRequest, extractJsonObject, isOpenRouter, responseFormatFor, stableSerialize, projectionFingerprint, requestModelDecision, createAppServer });
+module.exports = Object.freeze({
+  MAX_REQUEST_BYTES, SUPPORTED_PROVIDER_TYPES, parseEnvFile, providerTypeFromUrl, resolveProviderType,
+  loadConfiguration, configurationStatus, validateDecisionRequest, extractJsonObject, isOpenRouter,
+  responseFormatFor, mapProviderRequest, stableSerialize, projectionFingerprint, requestModelDecision, createAppServer
+});
