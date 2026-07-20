@@ -274,7 +274,7 @@ test("Timeline review does not advance time and Restart restores turn zero", () 
 
   harness.click("restart");
   assert.match(harness.html(), /Turn 0 boundary/);
-  assert.match(harness.html(), /Ready to resolve turn 1/);
+  assert.match(harness.html(), /<strong>Ready<\/strong>/);
   assert.doesNotMatch(harness.html(), /Mara finds spare-key marks/);
   assert.match(harness.announcement(), /restarted at turn zero/i);
 });
@@ -400,7 +400,7 @@ test("Run reaches the complete Original outcome and stops automatically", () => 
   assert.match(harness.html(), />Lost</);
   assert.match(harness.html(), />Exposed</);
   assert.match(harness.html(), />Fractured</);
-  assert.match(harness.html(), /Original outcome recorded/);
+  assert.match(harness.html(), /<strong>Complete<\/strong>/);
 });
 
 test("Pause stops playback only at a completed boundary", () => {
@@ -416,7 +416,7 @@ test("Pause stops playback only at a completed boundary", () => {
   harness.click("pause");
 
   assert.equal(harness.pendingPlaybackTimers(), 0);
-  assert.match(harness.html(), /Turn 1 complete · next boundary ready/);
+  assert.match(harness.html(), /<strong>Paused<\/strong>/);
   assert.match(harness.announcement(), /paused at completed turn 1/i);
 });
 
@@ -428,7 +428,7 @@ test("Restart after outcome reproduces the Phase 1 turn-zero checkpoint", () => 
   harness.click("restart");
 
   assert.match(harness.html(), /Turn 0 boundary/);
-  assert.match(harness.html(), /Ready to resolve turn 1/);
+  assert.match(harness.html(), /<strong>Ready<\/strong>/);
   assert.doesNotMatch(harness.html(), /Branch complete/);
   assert.doesNotMatch(harness.html(), /Turn 1 complete/);
 });

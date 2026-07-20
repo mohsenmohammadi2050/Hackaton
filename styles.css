@@ -1183,6 +1183,18 @@ a:focus-visible {
   font-size: 0.68rem;
 }
 
+.follow-toggle {
+  margin-top: 0.32rem;
+  border-bottom: 1px solid transparent;
+  color: #b8eee0;
+  font-size: 0.58rem;
+  letter-spacing: 0.03em;
+  text-transform: none;
+}
+
+.follow-toggle:hover,
+.follow-toggle:focus-visible { border-bottom-color: currentColor; }
+
 .playback-buttons {
   display: flex;
   gap: 0.35rem;
@@ -1689,6 +1701,53 @@ code {
 
 .cause-link span { float: right; }
 
+@media (min-width: 1181px) {
+  .workspace {
+    display: flex;
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .workspace-body {
+    min-height: 0;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .world-column { overflow-y: auto; overscroll-behavior: contain; }
+
+  .timeline-column {
+    display: grid;
+    min-height: 0;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    overflow: hidden;
+  }
+
+  .timeline {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .inspector-column {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .inspector-scroll {
+    min-height: 0;
+    max-height: none;
+    flex: 1;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
 @media (max-width: 1180px) {
   .workspace-body {
     grid-template-columns: minmax(440px, 1.2fr) minmax(320px, 0.8fr);
@@ -1947,7 +2006,7 @@ code {
 }
 
 .branch-tabs .compare-tab { color: #b8eee0; }
-.live-workspace .workspace-body { min-height: calc(100vh - 132px); }
+.live-workspace .workspace-body { min-height: 0; }
 .live-map .location-card { position: relative; overflow: hidden; }
 .live-map .location-card::after {
   position: absolute;
@@ -2021,6 +2080,16 @@ code {
 .intervention-modal > header h2 { margin: 0; font: 400 2rem var(--serif); }
 .intervention-modal > footer { justify-content: flex-end; border-top: 1px solid var(--line); border-bottom: 0; }
 .modal-lede { margin: 1.25rem 1.4rem; color: var(--ink-soft); }
+
+.intervention-explanation {
+  margin: 0.85rem 1.4rem 0;
+  padding: 0.75rem 0.85rem;
+  border-left: 2px solid rgba(121, 214, 176, 0.5);
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  line-height: 1.55;
+  background: rgba(55, 105, 84, 0.1);
+}
 
 .intervention-tabs {
   display: flex;

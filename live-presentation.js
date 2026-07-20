@@ -23,6 +23,7 @@
     const useRecorded = options.onUseRecorded;
     const backToStart = options.onBackStart;
     const mode = options.mode || "deterministic";
+    const showDemoTools = options.demoTools === true || new URLSearchParams(win.location?.search || "").get("demo") === "1";
     let adapter = null;
     let runTimer = null;
     const ui = {
@@ -39,6 +40,7 @@
       composer: false,
       interventionCategory: "Information",
       compare: false,
+      followLive: true,
       movedNpcIds: []
     };
 
@@ -211,7 +213,7 @@
       const deterministicPreparation = !adapter.dynamic && capabilities.alternateCanRun && ui.branch === "alternate";
       const status = awaitingIntervention ? "Awaiting exactly one typed intervention" : complete ? "Simulation complete" : ui.resolving ? `Resolving Turn ${frontier.boundary.turn + 1}…` : ui.running ? "Auto-running" : ui.aiStatus || `Ready at Turn ${frontier.boundary.turn}`;
       const disabled = ui.running || ui.resolving || complete || awaitingIntervention || deterministicPreparation;
-      return `<div class="playback-control"><div class="playback-status"><span>${view.branch.kind} · ${mode === "ai-live" ? "AI Live" : "deterministic"}</span><strong>${status}</strong></div><div class="playback-buttons" role="group" aria-label="Simulation playback controls"><button class="button button-compact" title="Resolve one decision round and stop." data-action="live-step" ${disabled ? "disabled" : ""}>Next Turn →</button><button class="button button-compact button-run" title="Continue automatically until paused or completed." data-action="live-run" ${disabled ? "disabled" : ""}>Run to End ▶</button><button class="button button-compact button-pause" title="Stop after the current turn finishes." data-action="live-pause" ${ui.running ? "" : "disabled"}>Pause Ⅱ</button></div>${forkable ? `<button class="button button-fork" data-action="open-fork">Fork from turn ${view.boundary.turn} <span aria-hidden="true">⑂</span></button>` : ""}${deterministicPreparation ? `<button class="button button-primary button-resolve" data-action="resolve-alternate">Prepare Alternate future</button>` : ""}${canCompare() ? `<button class="button button-primary button-resolve" data-action="open-comparison">Compare outcomes</button>` : ""}</div>`;
+      return `<div class="playback-control"><div class="playback-status"><span>${view.branch.kind} · ${mode === "ai-live" ? "AI Live" : "deterministic"}</span><strong>${status}</strong><button class="follow-toggle" type="button" data-action="toggle-follow" aria-pressed="${ui.followLive}">Follow live events: ${ui.followLive ? "On" : "Off"}</button></div><div class="playback-buttons" role="group" aria-label="Simulation playback controls"><button class="button button-compact" title="Resolve one decision round and stop." data-action="live-step" ${disabled ? "disabled" : ""}>Next Turn →</button><button class="button button-compact button-run" title="Continue automatically until paused or completed." data-action="live-run" ${disabled ? "disabled" : ""}>Run to End ▶</button><button class="button button-compact button-pause" title="Stop after the current turn finishes." data-action="live-pause" ${ui.running ? "" : "disabled"}>Pause Ⅱ</button></div>${forkable ? `<button class="button button-fork" data-action="open-fork">Fork from turn ${view.boundary.turn} <span aria-hidden="true">⑂</span></button>` : ""}${deterministicPreparation ? `<button class="button button-primary button-resolve" data-action="resolve-alternate">Prepare Alternate future</button>` : ""}${canCompare() ? `<button class="button button-primary button-resolve" data-action="open-comparison">Compare outcomes</button>` : ""}</div>`;
     }
 
     function renderInspector(view) {
@@ -241,7 +243,13 @@
       const ownerRows = Object.values(view.npcs).filter((npc) => npc.inventory.length).flatMap((npc) => npc.inventory.map((item) => ({ item, owner: npc.id, location: npc.locationId })));
       const transfer = ownerRows[0];
       const recipients = transfer ? Object.values(view.npcs).filter((npc) => npc.id !== transfer.owner && npc.locationId === transfer.location) : [];
-      return `<div class="modal-backdrop"><section class="intervention-modal" role="dialog" aria-modal="true" aria-labelledby="fork-title"><header><div><p class="section-kicker">Counterfactual intervention</p><h2 id="fork-title">Fork turn ${view.boundary.turn}</h2></div><button class="icon-button" data-action="close-fork" aria-label="Close intervention composer">×</button></header><p class="modal-lede">The Original stays immutable. The Alternate receives exactly one typed World event at this frozen boundary.</p><div class="intervention-tabs" role="tablist">${["Information", "ItemTransfer", "EnvironmentalEvent"].map((name) => `<button role="tab" aria-selected="${category === name}" data-action="set-intervention-category" data-category="${name}">${name === "ItemTransfer" ? "Item transfer" : name === "EnvironmentalEvent" ? "Environmental" : name}</button>`).join("")}</div><form id="intervention-form" class="intervention-form">${category === "Information" ? `<label>Recipient<select id="intervention-recipient">${Object.values(view.npcs).map((npc) => `<option value="${npc.id}">${escape(npc.name)}</option>`).join("")}</select></label><label>Information<select id="intervention-proposition">${PROPOSITIONS.map(([id, label]) => `<option value="${id}">${escape(label)}</option>`).join("")}</select></label><label>Confidence<input id="intervention-confidence" type="number" min="0" max="100" value="90"></label><label class="form-wide">Event description<input id="intervention-description" maxlength="280" value="A sealed record supplies new evidence at the completed boundary."></label>` : category === "ItemTransfer" ? (transfer && recipients.length ? `<label>Item<input id="intervention-item" value="${escape(transfer.item)}" readonly></label><label>From<input id="intervention-from" value="${escape(transfer.owner)}" readonly></label><label>To<select id="intervention-to">${recipients.map((npc) => `<option value="${npc.id}">${escape(npc.name)}</option>`).join("")}</select></label><label class="form-wide">Event description<input id="intervention-description" maxlength="280" value="An external handoff transfers the item between co-located characters."></label>` : `<div class="form-empty">No legal co-located item transfer exists at this boundary. Choose another turn or intervention type.</div>`) : `<label>Location<select id="intervention-location">${Object.values(view.locations).map((location) => `<option value="${location.id}">${escape(location.name)}</option>`).join("")}</select></label><label>Condition ID<input id="intervention-condition" value="condition-smoke"></label><label>State<select id="intervention-condition-state"><option value="active">Active</option><option value="cleared">Cleared</option></select></label><label class="form-wide">Event description<input id="intervention-description" maxlength="280" value="Smoke becomes directly observable at this location."></label>`}</form><div class="intervention-preview"><span>Typed event</span><strong>${escape(category)}</strong><small>Validated by the Intervention Layer, then resolved only by World rules.</small></div><footer><button class="button button-secondary" data-action="apply-demo-intervention" ${view.boundary.turn === demoConfig?.forkTurn ? "" : "disabled"}>Use approved demo intervention</button><button class="button button-primary" data-action="apply-intervention" ${category === "ItemTransfer" && (!transfer || !recipients.length) ? "disabled" : ""}>Create Alternate event →</button></footer></section></div>`;
+      const explanation = category === "Information"
+        ? "Private evidence gives only the selected recipient a new owned memory and belief. It does not become public truth."
+        : category === "ItemTransfer"
+          ? "A real item can move only between valid co-located participants. World rules verify possession and location before the transfer."
+          : "A supported condition becomes observable at one location. World rules determine who can witness its consequences.";
+      const demoReady = view.boundary.turn === demoConfig?.forkTurn;
+      return `<div class="modal-backdrop"><section class="intervention-modal" role="dialog" aria-modal="true" aria-labelledby="fork-title"><header><div><p class="section-kicker">Counterfactual intervention</p><h2 id="fork-title">Fork turn ${view.boundary.turn}</h2></div><button class="icon-button" data-action="close-fork" aria-label="Close intervention composer">×</button></header><p class="modal-lede">The Original stays immutable. The Alternate receives exactly one typed World event at this frozen boundary.</p><div class="intervention-tabs" role="tablist">${["Information", "ItemTransfer", "EnvironmentalEvent"].map((name) => `<button role="tab" aria-selected="${category === name}" data-action="set-intervention-category" data-category="${name}">${name === "ItemTransfer" ? "Item transfer" : name === "EnvironmentalEvent" ? "Environmental" : name}</button>`).join("")}</div><p class="intervention-explanation">${escape(explanation)}</p><form id="intervention-form" class="intervention-form">${category === "Information" ? `<label>Recipient<select id="intervention-recipient">${Object.values(view.npcs).map((npc) => `<option value="${npc.id}">${escape(npc.name)}</option>`).join("")}</select></label><label>Information<select id="intervention-proposition">${PROPOSITIONS.map(([id, label]) => `<option value="${id}">${escape(label)}</option>`).join("")}</select></label><label>Confidence<input id="intervention-confidence" type="number" min="0" max="100" value="90"></label><label class="form-wide">Event description<input id="intervention-description" maxlength="280" value="A sealed record supplies new evidence at the completed boundary."></label>` : category === "ItemTransfer" ? (transfer && recipients.length ? `<label>Item<input id="intervention-item" value="${escape(transfer.item)}" readonly></label><label>From<input id="intervention-from" value="${escape(transfer.owner)}" readonly></label><label>To<select id="intervention-to">${recipients.map((npc) => `<option value="${npc.id}">${escape(npc.name)}</option>`).join("")}</select></label><label class="form-wide">Event description<input id="intervention-description" maxlength="280" value="An external handoff transfers the item between co-located characters."></label>` : `<div class="form-empty">No legal co-located item transfer exists at this boundary. Choose another turn or intervention type.</div>`) : `<label>Location<select id="intervention-location">${Object.values(view.locations).map((location) => `<option value="${location.id}">${escape(location.name)}</option>`).join("")}</select></label><label>Condition ID<input id="intervention-condition" value="condition-smoke"></label><label>State<select id="intervention-condition-state"><option value="active">Active</option><option value="cleared">Cleared</option></select></label><label class="form-wide">Event description<input id="intervention-description" maxlength="280" value="Smoke becomes directly observable at this location."></label>`}</form><div class="intervention-preview"><span>Typed event</span><strong>${escape(category)}</strong><small>Validated by the Intervention Layer, then resolved only by World rules.</small></div><footer>${showDemoTools ? `<button class="button button-secondary" data-action="apply-demo-intervention" title="${demoReady ? "Load the documented competition demo intervention." : `Available at turn ${demoConfig?.forkTurn}.`}" ${demoReady ? "" : "disabled"}>Load competition demo setup</button>` : ""}<button class="button button-primary" data-action="apply-intervention" ${category === "ItemTransfer" && (!transfer || !recipients.length) ? "disabled" : ""}>Create Alternate event →</button></footer></section></div>`;
     }
 
     function renderComparison() {
@@ -257,6 +265,8 @@
     async function step() {
       if (branchComplete(ui.branch) || ui.resolving) return;
       const before = frontierView();
+      const selectedBefore = ui.selections[ui.branch];
+      const wasFollowingFrontier = selectedBefore === before.boundary.id;
       if (adapter.dynamic) {
         ui.resolving = true;
         ui.aiStatus = `Generating 4 character decisions…`;
@@ -272,12 +282,15 @@
       } else ui.frontiers[ui.branch] += 1;
       const boundaries = list();
       const nextId = boundaries[ui.frontiers[ui.branch]].id;
-      ui.selections[ui.branch] = nextId;
       const after = adapter.viewAt(ui.branch, nextId);
       ui.movedNpcIds = Object.keys(after.npcs).filter((id) => before.npcs[id].locationId !== after.npcs[id].locationId);
-      ui.selection = { type: "event", id: after.currentTurnEvents[0]?.id || after.events.at(-1)?.id || null };
+      if (ui.followLive || wasFollowingFrontier) {
+        ui.selections[ui.branch] = nextId;
+        ui.selection = { type: "event", id: after.currentTurnEvents[0]?.id || after.events.at(-1)?.id || null };
+      }
       ui.aiStatus = branchComplete(ui.branch) ? "Simulation complete" : ui.running ? "Auto-running" : `Ready at Turn ${after.boundary.turn}`;
       render();
+      if (ui.followLive) win.requestAnimationFrame?.(() => { const timeline = doc.querySelector(".timeline"); if (timeline) timeline.scrollTop = timeline.scrollHeight; });
       announce(`${after.branch.kind} turn ${after.boundary.turn} ${after.boundary.classification} complete. ${after.clock.turnsRemaining} turns remain.`);
     }
     function run() {
@@ -337,17 +350,18 @@
       if (action === "live-step") { step(); return true; }
       if (action === "live-run") { run(); return true; }
       if (action === "live-pause") { if (ui.resolving) ui.pauseRequested = true; else { stopTimer(); ui.aiStatus = `Paused after Turn ${frontierView().boundary.turn}`; render(); } announce(`Playback will pause after completed turn ${frontierView().boundary.turn}.`); return true; }
+      if (action === "toggle-follow") { ui.followLive = !ui.followLive; render(); announce(`Follow live events ${ui.followLive ? "on" : "off"}.`); return true; }
       if (action === "select-live-npc") { ui.selection = { type: "npc", id: control.dataset.npc }; render(); announce(`${selectedView().npcs[control.dataset.npc].name} owned perspective opened.`); return true; }
       if (action === "select-live-boundary") { ui.selections[ui.branch] = control.dataset.boundary; const view = selectedView(); ui.selection = { type: "event", id: view.currentTurnEvents[0]?.id || view.events.at(-1)?.id }; render(); return true; }
       if (action === "select-live-event") { const event = frontierView().events.find((item) => item.id === control.dataset.event); if (event) { const boundary = list().filter((item) => item.turn === event.turn).at(-1); ui.selections[ui.branch] = boundary.id; ui.selection = { type: "event", id: event.id }; render(); } return true; }
       if (action === "open-fork") { stopTimer(); try { const view = selectedView("original"); adapter.forkAt(view.boundary.turn); ui.branch = "alternate"; ui.frontiers.alternate = list("alternate").length - 1; ui.selections.alternate = list("alternate").at(-1).id; ui.composer = true; ui.selection = { type: "event", id: selectedView("alternate").events.at(-1)?.id }; render(); announce(`Alternate forked from completed turn ${view.boundary.turn}. Choose exactly one intervention.`); } catch (error) { fail(error); } return true; }
       if (action === "close-fork") { ui.composer = false; render(); return true; }
       if (action === "set-intervention-category") { ui.interventionCategory = control.dataset.category; render(); return true; }
-      if (action === "apply-demo-intervention") { applyIntervention(demoConfig.intervention); return true; }
+      if (action === "apply-demo-intervention" && showDemoTools && selectedView().boundary.turn === demoConfig?.forkTurn) { applyIntervention(demoConfig.intervention); return true; }
       if (action === "apply-intervention") { applyIntervention(interventionRequest(selectedView())); return true; }
       if (action === "resolve-alternate") { try { adapter.completeAlternate(); render(); announce("Alternate future resolved deterministically. Use Step or Run to reveal its frozen boundaries."); } catch (error) { fail(error); } return true; }
       if (action === "switch-branch") { stopTimer(); ui.branch = control.dataset.branch; ui.composer = false; ui.compare = false; const view = selectedView(); ui.selection = { type: "event", id: view.events.at(-1)?.id || null }; render(); announce(`${view.branch.kind} timeline selected.`); return true; }
-      if (action === "open-comparison") { ui.compare = true; render(); if (typeof win.scrollTo === "function") win.scrollTo({ top: 0, behavior: "smooth" }); announce("Validated side-by-side branch comparison opened."); return true; }
+      if (action === "open-comparison") { ui.compare = true; render(); announce("Validated side-by-side branch comparison opened."); return true; }
       if (action === "close-comparison") { ui.compare = false; render(); return true; }
       if (action === "jump-comparison-event") { ui.compare = false; ui.branch = "alternate"; const boundary = list("alternate").filter((item) => item.turn === Number(control.dataset.turn)).at(-1); ui.selections.alternate = boundary.id; ui.selection = { type: "event", id: control.dataset.event }; render(); return true; }
       return false;

@@ -15,6 +15,7 @@
     currentTurn: 0,
     selectedTurn: 0,
     isRunning: false,
+    recordedStatus: "Ready",
     selection: { type: "event", id: "evt-shared-t00-start" }
   };
 
@@ -475,14 +476,11 @@
   }
 
   function renderPlaybackControls(branchComplete) {
-    const nextTurn = Math.min(state.currentTurn + 1, data.originalOutcome.turn);
     const status = branchComplete
-      ? "Original outcome recorded"
+      ? "Complete"
       : state.isRunning
-        ? `Advancing toward turn ${nextTurn}`
-        : state.currentTurn === 0
-          ? "Ready to resolve turn 1"
-          : `Turn ${state.currentTurn} complete · next boundary ready`;
+        ? "Auto-running"
+        : state.recordedStatus;
 
     return `
       <div class="playback-control">
@@ -491,9 +489,9 @@
           <strong>${escapeHtml(status)}</strong>
         </div>
         <div class="playback-buttons" role="group" aria-label="Recorded playback controls">
-          <button class="button button-compact" type="button" data-action="step" ${state.isRunning || branchComplete ? "disabled" : ""}>Step <span aria-hidden="true">→</span></button>
-          <button class="button button-compact button-run" type="button" data-action="run" ${state.isRunning || branchComplete ? "disabled" : ""}>Run <span aria-hidden="true">▶</span></button>
-          <button class="button button-compact button-pause" type="button" data-action="pause" ${state.isRunning ? "" : "disabled"}>Pause <span aria-hidden="true">Ⅱ</span></button>
+          <button class="button button-compact" title="Resolve one decision round and stop." type="button" data-action="step" ${state.isRunning || branchComplete ? "disabled" : ""}>Next Turn <span aria-hidden="true">→</span></button>
+          <button class="button button-compact button-run" title="Continue automatically until paused or completed." type="button" data-action="run" ${state.isRunning || branchComplete ? "disabled" : ""}>Run to End <span aria-hidden="true">▶</span></button>
+          <button class="button button-compact button-pause" title="Stop after the current turn finishes." type="button" data-action="pause" ${state.isRunning ? "" : "disabled"}>Pause <span aria-hidden="true">Ⅱ</span></button>
         </div>
       </div>
     `;
@@ -524,6 +522,7 @@
     state.currentTurn = 0;
     state.selectedTurn = 0;
     state.isRunning = false;
+    state.recordedStatus = "Ready";
     state.selection = { type: "event", id: "evt-shared-t00-start" };
     renderWorkspace();
     announce("Recorded session restarted at turn zero.");
@@ -543,6 +542,7 @@
     }
 
     state.currentTurn += 1;
+    state.recordedStatus = "Ready";
     state.selectedTurn = state.currentTurn;
     const firstEvent = data.events.find((item) => item.turn === state.currentTurn);
     state.selection = { type: "event", id: firstEvent.id };
@@ -564,6 +564,7 @@
   function startRun() {
     if (state.isRunning || state.currentTurn >= data.originalOutcome.turn) return;
     state.isRunning = true;
+    state.recordedStatus = "Auto-running";
     renderWorkspace();
     announce(`Recorded playback running from completed turn ${state.currentTurn}.`);
     scheduleNextRecordedTurn();
@@ -587,6 +588,7 @@
   function pauseRun() {
     if (!state.isRunning) return;
     state.isRunning = false;
+    state.recordedStatus = "Paused";
     stopRunTimer();
     renderWorkspace();
     announce(`Recorded playback paused at completed turn ${state.currentTurn}.`);
