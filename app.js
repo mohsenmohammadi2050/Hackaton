@@ -64,14 +64,15 @@
             </div>
           </div>
           <div class="start-actions">
-            <button class="button button-primary" type="button" data-action="open-briefing" data-mode="live">
-              Begin The Last Antidote <span aria-hidden="true">→</span>
+            <button class="button button-primary" type="button" data-action="open-briefing" data-mode="ai-live">
+              Start AI Live Simulation <span aria-hidden="true">→</span>
             </button>
             <button class="button button-secondary" type="button" data-action="watch-recorded">
-              <span class="record-dot" aria-hidden="true"></span> Watch recorded demonstration
+              <span class="record-dot" aria-hidden="true"></span> Explore Recorded Demo
             </button>
+            <button class="button button-tertiary" type="button" data-action="open-briefing" data-mode="deterministic">Deterministic Simulation</button>
           </div>
-          <p class="build-note">Live simulation + immutable Recorded Original</p>
+          <p class="build-note">Real AI Live · deterministic simulation · immutable Recorded Demo</p>
         </div>
         <aside class="start-art" aria-label="The Last Antidote scenario motif">
           <div class="vial-glow" aria-hidden="true">
@@ -85,7 +86,9 @@
   }
 
   function renderBriefing() {
-    const isLive = state.mode === "live";
+    const isLive = state.mode === "ai-live";
+    const isDeterministic = state.mode === "deterministic";
+    const modeLabel = isLive ? "AI Live" : isDeterministic ? "Deterministic" : "Recorded";
     const cast = characterEntries.map(([id, npc]) => `
       <article class="brief-card">
         <div class="portrait portrait-${escapeHtml(npc.color)}" aria-hidden="true">${escapeHtml(npc.initials)}</div>
@@ -101,7 +104,7 @@
       <section class="screen briefing-screen" aria-labelledby="briefing-title">
         <header class="briefing-header">
           <button class="text-button" type="button" data-action="back-start"><span aria-hidden="true">←</span> Back</button>
-          <div class="mode-pill ${isLive ? "mode-live" : ""}"><span class="record-dot" aria-hidden="true"></span> ${isLive ? "Live simulation" : "Recorded preview"}</div>
+          <div class="mode-pill ${isLive ? "mode-live" : ""}"><span class="record-dot" aria-hidden="true"></span> ${modeLabel}</div>
         </header>
         <div class="briefing-hero">
           <div>
@@ -129,14 +132,14 @@
             <span class="note-icon" aria-hidden="true">i</span>
             <p><strong>Perspective view</strong> lets you inspect each character's owned memories, beliefs, trust, and declared decisions without revealing hidden world truth.</p>
           </div>
-          <button class="button button-primary" type="button" data-action="enter-world">${isLive ? "Start live simulation" : "Enter recorded world"} <span aria-hidden="true">→</span></button>
+          <button class="button button-primary" type="button" data-action="enter-world">${isLive ? "Connect and start AI Live" : isDeterministic ? "Start deterministic simulation" : "Explore precomputed story"} <span aria-hidden="true">→</span></button>
         </div>
       </section>
     `;
   }
 
   function renderWorkspace() {
-    if (state.mode === "live") {
+    if (state.mode !== "recorded") {
       renderLiveWorkspace();
       return;
     }
@@ -617,10 +620,16 @@
       app,
       announcer,
       escapeHtml,
+      mode: state.mode,
       onUseRecorded() {
         state.mode = "recorded";
         livePresentation = null;
         restartSession();
+      },
+      onBackStart() {
+        livePresentation = null;
+        state.screen = "start";
+        renderStart();
       }
     });
     livePresentation.start();
@@ -631,7 +640,7 @@
     if (!control) return;
     const action = control.dataset.action;
 
-    if (state.mode === "live" && state.screen === "workspace" && livePresentation?.handleAction(control)) {
+    if (state.mode !== "recorded" && state.screen === "workspace" && livePresentation?.handleAction(control)) {
       return;
     }
     if (action === "open-briefing" || action === "watch-recorded") {
@@ -648,7 +657,7 @@
     }
     if (action === "enter-world") {
       state.screen = "workspace";
-      if (state.mode === "live") startLiveSession();
+      if (state.mode !== "recorded") startLiveSession();
       else restartSession();
       document.getElementById("main-content").focus();
       return;

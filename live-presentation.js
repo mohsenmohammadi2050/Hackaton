@@ -21,6 +21,8 @@
     const announcer = options.announcer;
     const escape = options.escapeHtml;
     const useRecorded = options.onUseRecorded;
+    const backToStart = options.onBackStart;
+    const mode = options.mode || "deterministic";
     let adapter = null;
     let runTimer = null;
     const ui = {
@@ -29,6 +31,9 @@
       selections: { original: null, alternate: null },
       selection: { type: "event", id: null },
       running: false,
+      resolving: false,
+      pauseRequested: false,
+      aiStatus: null,
       loading: false,
       error: null,
       composer: false,
@@ -53,21 +58,35 @@
       render();
       announce(`Live simulation error. ${ui.error}`);
     }
-    function start() {
+    async function start() {
       ui.loading = true;
+      ui.aiStatus = mode === "ai-live" ? "Connecting to AI provider…" : "Preparing deterministic simulation…";
       render();
-      win.setTimeout(() => {
+      await new Promise((resolve) => win.setTimeout(resolve, 30));
         try {
-          if (!adapterApi || typeof adapterApi.createLiveSession !== "function") throw new Error("Live modules are unavailable in this build.");
-          adapter = adapterApi.createLiveSession();
+          if (mode === "ai-live") {
+            const providerApi = win.FORKED_FATES_AI_LIVE_PROVIDER;
+            const aiAdapterApi = win.FORKED_FATES_AI_LIVE_SESSION_ADAPTER;
+            if (!providerApi || !aiAdapterApi) throw new Error("AI Live modules are unavailable in this build.");
+            const configuration = await providerApi.getConfiguration();
+            if (!configuration.configured) {
+              const error = new Error(`AI Live setup is incomplete: ${configuration.missing.join(", ")}. Copy .env.example to .env, configure a provider, and restart the local server.`);
+              error.code = "AI_NOT_CONFIGURED";
+              throw error;
+            }
+            adapter = aiAdapterApi.createAiLiveSession(providerApi.createProvider());
+          } else {
+            if (!adapterApi || typeof adapterApi.createLiveSession !== "function") throw new Error("Deterministic simulation modules are unavailable in this build.");
+            adapter = adapterApi.createLiveSession();
+          }
           const initial = adapter.currentView("original");
           ui.selections.original = initial.boundary.id;
           ui.selection = { type: "event", id: initial.events[0]?.id || null };
           ui.loading = false;
+          ui.aiStatus = mode === "ai-live" ? "Ready at Turn 0" : "Ready at Turn 0";
           render();
-          announce("Live authoritative Original ready at turn zero.");
+          announce(`${mode === "ai-live" ? "AI Live" : "Deterministic"} authoritative Original ready at turn zero.`);
         } catch (error) { fail(error); }
-      }, 30);
     }
     function list(branch = ui.branch) { return adapter.boundaryList(branch); }
     function selectedView(branch = ui.branch) {
@@ -80,6 +99,7 @@
       return adapter.viewAt(branch, boundaries[ui.frontiers[branch]].id);
     }
     function branchComplete(branch) {
+      if (adapter?.dynamic) return adapter.getSession()[branch]?.state?.status === "completed";
       return ui.frontiers[branch] >= list(branch).length - 1;
     }
     function canCompare() {
@@ -88,11 +108,11 @@
 
     function render() {
       if (ui.loading) {
-        app.innerHTML = `<section class="live-state-screen" aria-labelledby="live-loading-title"><div class="loading-orbit" aria-hidden="true"></div><p class="eyebrow"><span class="eyebrow-mark"></span>Authoritative simulation</p><h1 id="live-loading-title">Freezing the first boundary…</h1><p>Four autonomous decisions will resolve through deterministic World rules.</p></section>`;
+        app.innerHTML = `<section class="live-state-screen" aria-labelledby="live-loading-title"><div class="loading-orbit" aria-hidden="true"></div><p class="eyebrow"><span class="eyebrow-mark"></span>${mode === "ai-live" ? "AI Live Simulation" : "Deterministic Simulation"}</p><h1 id="live-loading-title">${escape(ui.aiStatus || "Freezing the first boundary…")}</h1><p>${mode === "ai-live" ? "Each character will receive only its owned state through the secure local provider proxy." : "Four rule-based decisions will resolve reproducibly through authoritative World rules."}</p></section>`;
         return;
       }
       if (ui.error) {
-        app.innerHTML = `<section class="live-state-screen error-state" aria-labelledby="live-error-title"><span class="error-glyph" aria-hidden="true">!</span><p class="eyebrow">Frozen-boundary recovery</p><h1 id="live-error-title">Live simulation paused safely</h1><p>${escape(ui.error)}</p><div class="start-actions"><button class="button button-primary" data-action="retry-live" type="button">Retry Live</button><button class="button button-secondary" data-action="use-recorded" type="button">Use Recorded Original</button></div></section>`;
+        app.innerHTML = `<section class="live-state-screen error-state" aria-labelledby="live-error-title"><span class="error-glyph" aria-hidden="true">!</span><p class="eyebrow">Frozen-boundary recovery</p><h1 id="live-error-title">${mode === "ai-live" ? "AI provider error" : "Simulation paused safely"}</h1><p>${escape(ui.error)}</p><div class="start-actions"><button class="button button-primary" data-action="retry-live" type="button">Retry ${mode === "ai-live" ? "AI Live" : "simulation"}</button><button class="button button-secondary" data-action="back-start" type="button">Return to start</button><button class="button button-tertiary" data-action="use-recorded" type="button">Explore Recorded Demo</button></div></section>`;
         return;
       }
       if (!adapter) return;
@@ -115,14 +135,14 @@
               <div class="status-cell"><span>Branch</span><strong>${view.branch.kind}</strong></div>
               <div class="status-cell"><span>Completed turn</span><strong>${frontier.clock.turn} <small>/ 12 · ${frontier.clock.turnsRemaining} remain</small></strong></div>
               <div class="status-cell status-patient ${patientLost ? "status-lost" : ""}"><span>Patient</span><strong><i aria-hidden="true"></i> ${escape(frontier.patient.status)}</strong></div>
-              <div class="mode-pill mode-pill-strong mode-live"><span class="live-pulse" aria-hidden="true"></span> Live · deterministic</div>
+              <div class="mode-pill mode-pill-strong ${mode === "ai-live" ? "mode-live" : ""}"><span class="live-pulse" aria-hidden="true"></span> ${mode === "ai-live" ? "AI Live" : "Deterministic"}</div>
             </div>
             <button class="icon-button" type="button" data-action="restart-live" title="Restart Live session" aria-label="Restart Live session">↻</button>
           </header>
           ${hasAlternate ? renderBranchBar(view) : ""}
           <div class="workspace-body">
             <section class="world-column" aria-labelledby="world-title">
-              <div class="panel-heading"><div><p class="section-kicker">World view</p><h2 id="world-title">Turn ${view.boundary.turn} boundary</h2></div><div class="activity-state ${ui.running ? "is-running" : ""}"><span aria-hidden="true"></span>${ui.running ? "Resolving completed boundaries" : `${escape(view.boundary.classification)} · frozen`}</div></div>
+              <div class="panel-heading"><div><p class="section-kicker">World view</p><h2 id="world-title">Turn ${view.boundary.turn} boundary</h2></div><div class="activity-state ${ui.running || ui.resolving ? "is-running" : ""}"><span aria-hidden="true"></span>${ui.aiStatus ? escape(ui.aiStatus) : `${escape(view.boundary.classification)} · frozen`}</div></div>
               ${historical ? `<div class="historical-banner"><strong>Reviewing turn ${view.boundary.turn}</strong><span>${view.branch.kind} remains at turn ${frontier.boundary.turn}.</span></div>` : ""}
               ${renderLocations(view)}
               <div class="world-legend" aria-label="Information legend"><span class="legend-chip fact">World fact</span><span class="legend-chip claim">Claim</span><span class="legend-chip belief">Belief</span><span class="legend-chip memory">Memory</span></div>
@@ -176,8 +196,10 @@
       const awaitingIntervention = ui.branch === "alternate" && capabilities.alternateNeedsIntervention;
       const complete = branchComplete(ui.branch) && !awaitingIntervention && !capabilities.alternateCanRun;
       const forkable = ui.branch === "original" && !capabilities.hasAlternate && view.boundary.turn <= 10 && view.boundary.classification !== "post-intervention";
-      const status = awaitingIntervention ? "Awaiting exactly one typed intervention" : capabilities.alternateCanRun && ui.branch === "alternate" ? "Intervention frozen · future ready to resolve" : complete ? "Branch outcome complete" : ui.running ? "Resolving next completed boundary" : `Turn ${frontier.boundary.turn} complete · next boundary ready`;
-      return `<div class="playback-control"><div class="playback-status"><span>${view.branch.kind} · frozen boundaries</span><strong>${status}</strong></div><div class="playback-buttons" role="group" aria-label="Live playback controls"><button class="button button-compact" data-action="live-step" ${ui.running || complete || awaitingIntervention || capabilities.alternateCanRun ? "disabled" : ""}>Step →</button><button class="button button-compact button-run" data-action="live-run" ${ui.running || complete || awaitingIntervention || capabilities.alternateCanRun ? "disabled" : ""}>Run ▶</button><button class="button button-compact button-pause" data-action="live-pause" ${ui.running ? "" : "disabled"}>Pause Ⅱ</button></div>${forkable ? `<button class="button button-fork" data-action="open-fork">Fork from turn ${view.boundary.turn} <span aria-hidden="true">⑂</span></button>` : ""}${capabilities.alternateCanRun && ui.branch === "alternate" ? `<button class="button button-primary button-resolve" data-action="resolve-alternate">Resolve Alternate future</button>` : ""}${canCompare() ? `<button class="button button-primary button-resolve" data-action="open-comparison">Compare outcomes</button>` : ""}</div>`;
+      const deterministicPreparation = !adapter.dynamic && capabilities.alternateCanRun && ui.branch === "alternate";
+      const status = awaitingIntervention ? "Awaiting exactly one typed intervention" : complete ? "Simulation complete" : ui.resolving ? `Resolving Turn ${frontier.boundary.turn + 1}…` : ui.running ? "Auto-running" : ui.aiStatus || `Ready at Turn ${frontier.boundary.turn}`;
+      const disabled = ui.running || ui.resolving || complete || awaitingIntervention || deterministicPreparation;
+      return `<div class="playback-control"><div class="playback-status"><span>${view.branch.kind} · ${mode === "ai-live" ? "AI Live" : "deterministic"}</span><strong>${status}</strong></div><div class="playback-buttons" role="group" aria-label="Simulation playback controls"><button class="button button-compact" title="Resolve one decision round and stop." data-action="live-step" ${disabled ? "disabled" : ""}>Next Turn →</button><button class="button button-compact button-run" title="Continue automatically until paused or completed." data-action="live-run" ${disabled ? "disabled" : ""}>Run to End ▶</button><button class="button button-compact button-pause" title="Stop after the current turn finishes." data-action="live-pause" ${ui.running ? "" : "disabled"}>Pause Ⅱ</button></div>${forkable ? `<button class="button button-fork" data-action="open-fork">Fork from turn ${view.boundary.turn} <span aria-hidden="true">⑂</span></button>` : ""}${deterministicPreparation ? `<button class="button button-primary button-resolve" data-action="resolve-alternate">Prepare Alternate future</button>` : ""}${canCompare() ? `<button class="button button-primary button-resolve" data-action="open-comparison">Compare outcomes</button>` : ""}</div>`;
     }
 
     function renderInspector(view) {
@@ -219,28 +241,50 @@
       return `<article class="branch-outcome branch-${branch}"><header><span>${label}</span><strong>${branch === "original" ? "Immutable reference" : "Counterfactual"}</strong></header><div class="outcome-triplet"><div><small>Medical</small><strong>${escape(outcome.medical)}</strong></div><div><small>Truth</small><strong>${escape(outcome.truth)}</strong></div><div><small>Social</small><strong>${escape(outcome.social)}</strong></div></div><p>Antidote: ${escape(antidote.used ? "used" : antidote.possessorId ? `held by ${antidote.possessorId}` : `at ${antidote.locationId}`)}</p></article>`;
     }
 
-    function step() {
-      if (branchComplete(ui.branch)) return;
+    async function step() {
+      if (branchComplete(ui.branch) || ui.resolving) return;
       const before = frontierView();
+      if (adapter.dynamic) {
+        ui.resolving = true;
+        ui.aiStatus = `Generating 4 character decisions…`;
+        render();
+        try {
+          await adapter.resolveNext(ui.branch, (status) => {
+            ui.aiStatus = status.phase === "validating" ? "Validating decisions…" : status.phase === "resolving" ? `Resolving Turn ${status.turn}…` : "Generating 4 character decisions…";
+            render();
+          });
+        } catch (error) { ui.resolving = false; fail(error); throw error; }
+        ui.resolving = false;
+        ui.frontiers[ui.branch] = list().length - 1;
+      } else ui.frontiers[ui.branch] += 1;
       const boundaries = list();
-      ui.frontiers[ui.branch] += 1;
       const nextId = boundaries[ui.frontiers[ui.branch]].id;
       ui.selections[ui.branch] = nextId;
       const after = adapter.viewAt(ui.branch, nextId);
       ui.movedNpcIds = Object.keys(after.npcs).filter((id) => before.npcs[id].locationId !== after.npcs[id].locationId);
       ui.selection = { type: "event", id: after.currentTurnEvents[0]?.id || after.events.at(-1)?.id || null };
+      ui.aiStatus = branchComplete(ui.branch) ? "Simulation complete" : ui.running ? "Auto-running" : `Ready at Turn ${after.boundary.turn}`;
       render();
       announce(`${after.branch.kind} turn ${after.boundary.turn} ${after.boundary.classification} complete. ${after.clock.turnsRemaining} turns remain.`);
     }
     function run() {
-      if (ui.running || branchComplete(ui.branch)) return;
+      if (ui.running || ui.resolving || branchComplete(ui.branch)) return;
       ui.running = true;
+      ui.pauseRequested = false;
+      ui.aiStatus = "Auto-running";
       render();
-      function tick() {
+      async function tick() {
         runTimer = null;
         if (!ui.running) return;
-        step();
-        if (!branchComplete(ui.branch)) {
+        try { await step(); } catch { return; }
+        if (ui.pauseRequested) {
+          ui.running = false;
+          ui.pauseRequested = false;
+          ui.aiStatus = `Paused after Turn ${frontierView().boundary.turn}`;
+          render();
+          return;
+        }
+        if (!branchComplete(ui.branch) && ui.running) {
           ui.running = true;
           runTimer = win.setTimeout(tick, 360);
         } else {
@@ -273,12 +317,13 @@
     function handleAction(control) {
       const action = control.dataset.action;
       if (action === "retry-live") { ui.error = null; adapter = null; start(); return true; }
+      if (action === "back-start") { stopTimer(); backToStart?.(); return true; }
       if (action === "use-recorded") { stopTimer(); useRecorded(); return true; }
       if (!adapter) return false;
       if (action === "restart-live") { stopTimer(); adapter = null; Object.assign(ui, { branch: "original", frontiers: { original: 0, alternate: 0 }, selections: { original: null, alternate: null }, selection: { type: "event", id: null }, error: null, composer: false, compare: false }); start(); return true; }
       if (action === "live-step") { step(); return true; }
       if (action === "live-run") { run(); return true; }
-      if (action === "live-pause") { stopTimer(); render(); announce(`Playback paused at completed turn ${frontierView().boundary.turn}.`); return true; }
+      if (action === "live-pause") { if (ui.resolving) ui.pauseRequested = true; else { stopTimer(); ui.aiStatus = `Paused after Turn ${frontierView().boundary.turn}`; render(); } announce(`Playback will pause after completed turn ${frontierView().boundary.turn}.`); return true; }
       if (action === "select-live-npc") { ui.selection = { type: "npc", id: control.dataset.npc }; render(); announce(`${selectedView().npcs[control.dataset.npc].name} owned perspective opened.`); return true; }
       if (action === "select-live-boundary") { ui.selections[ui.branch] = control.dataset.boundary; const view = selectedView(); ui.selection = { type: "event", id: view.currentTurnEvents[0]?.id || view.events.at(-1)?.id }; render(); return true; }
       if (action === "select-live-event") { const event = frontierView().events.find((item) => item.id === control.dataset.event); if (event) { const boundary = list().filter((item) => item.turn === event.turn).at(-1); ui.selections[ui.branch] = boundary.id; ui.selection = { type: "event", id: event.id }; render(); } return true; }

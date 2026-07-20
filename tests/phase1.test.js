@@ -187,7 +187,7 @@ test("Information types and the Recorded mode are visibly distinguished", () => 
   assert.match(appSource, />Claim</);
   assert.match(appSource, />Belief</);
   assert.match(appSource, />Memory</);
-  assert.match(appSource, /Recorded preview/);
+  assert.match(appSource, /Explore Recorded Demo/);
   assert.match(appSource, /mode-pill-strong/);
   assert.match(appSource, /slice\(-6\)/);
 });
@@ -228,10 +228,10 @@ test("The real application script completes the Phase 1 navigation journey", () 
   const harness = createAppHarness();
 
   assert.match(harness.html(), /Forked Fates/);
-  assert.match(harness.html(), /Begin The Last Antidote/);
-  assert.match(harness.html(), /Watch recorded demonstration/);
+  assert.match(harness.html(), /Start AI Live Simulation/);
+  assert.match(harness.html(), /Explore Recorded Demo/);
 
-  harness.click("open-briefing");
+  harness.click("watch-recorded");
   assert.match(harness.html(), /Scenario briefing/);
   assert.match(harness.html(), /twelve turns away/i);
   assert.doesNotMatch(harness.html(), /Orin ordered Sera/i);
