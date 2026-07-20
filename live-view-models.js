@@ -127,6 +127,26 @@
     };
   }
 
+  function createTurnNarrative(world, events) {
+    const actionEvents = events.filter((event) => event.actorId && event.action);
+    const actions = world.npcOrder.map((actorId) => {
+      const event = actionEvents.find((candidate) => candidate.actorId === actorId);
+      const npc = world.npcs[actorId];
+      return { actorId, actorName: npc.name, action: event?.action || "Ready", summary: event?.description || `${npc.name} is ready to decide.`, eventId: event?.id || null };
+    });
+    const important = events.filter((event) => !["Memory and belief update", "Clock update", "Trust update", "Branch outcome"].includes(event.category));
+    const summary = important.length
+      ? important.slice(0, 2).map((event) => event.description).join(" ")
+      : world.turn === 0 ? "Niko waits at the Clinic while four people begin with partial truths." : `Turn ${world.turn} closes with ${world.turnsRemaining} turns remaining.`;
+    return {
+      summary,
+      actions,
+      movedNpcIds: events.filter((event) => event.action === "Move").map((event) => event.actorId),
+      changeLines: events.flatMap((event) => changesToLines(event.changes)).slice(0, 8),
+      latestImportantEventId: important.at(-1)?.id || events.at(-1)?.id || null
+    };
+  }
+
   function createTimelineView(timeline, selector = {}) {
     invariant(timeline && timeline.state && Array.isArray(timeline.boundaries), "A completed-boundary timeline is required.");
     const selected = boundaryFor(timeline, selector);
@@ -141,6 +161,7 @@
       patientPresent: world.patient.locationId === id
     }]));
     const events = visibleEvents.map((event) => eventView(event, world));
+    const currentTurnEvents = events.filter((event) => event.turn === world.turn);
     const eventIds = new Set(events.map((event) => event.id));
     const turnRecords = timeline.turns.filter((record) => record.turn <= world.turn).map((record) => ({
       turn: record.turn,
@@ -167,11 +188,13 @@
       },
       clock: { turn: world.turn, deadline: world.deadline, turnsRemaining: world.turnsRemaining },
       patient: deepClone(world.patient),
+      antidote: deepClone(world.antidote),
       locations,
       npcs,
       publicRecord: deepClone(world.publicRecord),
       events,
-      currentTurnEvents: events.filter((event) => event.turn === world.turn),
+      currentTurnEvents,
+      narrative: createTurnNarrative(world, currentTurnEvents),
       turns: turnRecords,
       outcome: outcomeView(world.outcome),
       selectableBoundaryIds: timeline.boundaries.map((boundary) => boundary.id),

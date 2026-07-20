@@ -144,6 +144,7 @@
             <section class="world-column" aria-labelledby="world-title">
               <div class="panel-heading"><div><p class="section-kicker">World view</p><h2 id="world-title">Turn ${view.boundary.turn} boundary</h2></div><div class="activity-state ${ui.running || ui.resolving ? "is-running" : ""}"><span aria-hidden="true"></span>${ui.aiStatus ? escape(ui.aiStatus) : `${escape(view.boundary.classification)} · frozen`}</div></div>
               ${historical ? `<div class="historical-banner"><strong>Reviewing turn ${view.boundary.turn}</strong><span>${view.branch.kind} remains at turn ${frontier.boundary.turn}.</span></div>` : ""}
+              ${renderStoryBeat(view)}
               ${renderLocations(view)}
               <div class="world-legend" aria-label="Information legend"><span class="legend-chip fact">World fact</span><span class="legend-chip claim">Claim</span><span class="legend-chip belief">Belief</span><span class="legend-chip memory">Memory</span></div>
               ${view.outcome ? renderOutcome(view.outcome, view.branch.kind) : renderOutcomePreview(view)}
@@ -166,15 +167,25 @@
     function renderLocations(view) {
       return `<div class="world-map live-map">${Object.values(view.locations).map((location) => `
         <article class="location-card location-${escape(location.id)}">
+          <img class="location-illustration" src="assets/${escape(location.id)}.svg" alt="" aria-hidden="true">
           <header><span class="location-marker" aria-hidden="true">${location.id === "clinic" ? "+" : location.id === "square" ? "◇" : "▣"}</span><div><h3>${escape(location.name)}</h3><p>${escape(location.description)}</p></div></header>
-          <div class="occupant-list">${location.occupantIds.length ? location.occupantIds.map((id) => renderNpc(view.npcs[id], location.name)).join("") : `<p class="empty-location">No character present</p>`}</div>
-          <footer>${location.patientPresent ? `Niko · ${escape(view.patient.status)}` : "Observed location"}</footer>
+          <div class="occupant-list">${location.occupantIds.length ? location.occupantIds.map((id) => renderNpc(view.npcs[id], location.name)).join("") : `<p class="empty-location">No character present</p>`}${location.patientPresent ? `<div class="patient-token patient-${escape(view.patient.status.toLowerCase())}"><img src="assets/niko.svg" alt=""><span><strong>Niko</strong><small>${escape(view.patient.status)}</small></span></div>` : ""}</div>
+          <footer>${antidoteAtLocation(view, location.id) ? `<span class="antidote-indicator"><img src="assets/antidote.svg" alt="">Antidote here</span>` : location.patientPresent ? `Niko · ${escape(view.patient.status)}` : "Observed location"}</footer>
         </article>`).join("")}</div>`;
+    }
+    function antidoteAtLocation(view, locationId) {
+      if (view.antidote.used) return false;
+      if (view.antidote.locationId === locationId) return true;
+      return Boolean(view.antidote.possessorId && view.npcs[view.antidote.possessorId]?.locationId === locationId);
+    }
+    function renderStoryBeat(view) {
+      const holder = view.antidote.used ? "Used" : view.antidote.possessorId ? `Held by ${view.npcs[view.antidote.possessorId]?.name || view.antidote.possessorId}` : `At ${view.locations[view.antidote.locationId]?.name || "unknown"}`;
+      return `<section class="story-beat" aria-label="Current story summary"><div class="story-beat-copy"><p class="section-kicker">Latest authoritative story beat</p><h3>${escape(view.narrative.summary)}</h3><div class="story-actions">${view.narrative.actions.map((action) => `<button type="button" data-action="${action.eventId ? "select-live-event" : "select-live-npc"}" ${action.eventId ? `data-event="${escape(action.eventId)}" data-turn="${view.boundary.turn}"` : `data-npc="${escape(action.actorId)}"`}><img src="assets/${escape(action.actorId)}.svg" alt=""><span><strong>${escape(action.actorName)}</strong><small>${escape(action.action)} · ${escape(action.summary)}</small></span></button>`).join("")}</div></div><div class="story-vitals"><div><span>Patient</span><strong>${escape(view.patient.status)}</strong></div><div><span>Antidote</span><strong>${escape(holder)}</strong></div><div><span>Turns left</span><strong>${view.clock.turnsRemaining}</strong></div></div></section>`;
     }
     function renderNpc(npc, locationName) {
       const selected = ui.selection.type === "npc" && ui.selection.id === npc.id;
       const moved = ui.movedNpcIds.includes(npc.id);
-      return `<button class="npc-token ${selected ? "is-selected" : ""} ${moved ? "is-moving" : ""}" type="button" data-action="select-live-npc" data-npc="${escape(npc.id)}" aria-label="Inspect ${escape(npc.name)}, ${escape(npc.role)}, at ${escape(locationName)}"><span class="portrait portrait-small portrait-${COLOR[npc.id]}" aria-hidden="true">${INITIALS[npc.id]}</span><span><strong>${escape(npc.name.split(" ")[0])}</strong><small>${escape(npc.role)}</small></span><span class="posture-dot" title="${escape(npc.posture)} posture"></span></button>`;
+      return `<button class="npc-token ${selected ? "is-selected" : ""} ${moved ? "is-moving" : ""}" type="button" data-action="select-live-npc" data-npc="${escape(npc.id)}" aria-label="Inspect ${escape(npc.name)}, ${escape(npc.role)}, at ${escape(locationName)}"><img class="portrait portrait-small portrait-image" src="assets/${escape(npc.id)}.svg" alt=""><span><strong>${escape(npc.name.split(" ")[0])}</strong><small>${escape(npc.role)}</small></span><span class="posture-dot" title="${escape(npc.posture)} posture"></span></button>`;
     }
     function renderTimeline(view, frontier) {
       const boundaries = list().slice(0, ui.frontiers[ui.branch] + 1);
