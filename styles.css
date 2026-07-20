@@ -1236,7 +1236,8 @@ a:focus-visible {
 
 /* Completed Original */
 
-.completed-outcome {
+.completed-outcome,
+.terminal-completion {
   margin-top: 0.8rem;
   border: 1px solid rgba(199, 92, 82, 0.24);
   background:
@@ -1244,7 +1245,8 @@ a:focus-visible {
     rgba(255, 255, 255, 0.018);
 }
 
-.completed-outcome > header {
+.completed-outcome > header,
+.terminal-completion > header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -1253,7 +1255,8 @@ a:focus-visible {
   border-bottom: 1px solid var(--line);
 }
 
-.completed-outcome h2 {
+.completed-outcome h2,
+.terminal-completion h2 {
   margin: 0;
   font-family: var(--serif);
   font-size: 1.35rem;
@@ -1275,6 +1278,24 @@ a:focus-visible {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   margin: 0;
+}
+
+.terminal-completion .outcome-results { grid-template-columns: repeat(4, 1fr); }
+
+.terminal-causal-chain {
+  margin: 0;
+  padding: 0.9rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-soft);
+  line-height: 1.55;
+}
+
+.terminal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  padding: 0.9rem;
+  border-top: 1px solid var(--line);
 }
 
 .outcome-result {
@@ -1608,6 +1629,16 @@ a:focus-visible {
   border-left: 2px solid var(--gold);
   background: rgba(214, 169, 92, 0.055);
 }
+
+.failed-action-explanation {
+  padding: 0.8rem;
+  border-left: 2px solid var(--red);
+  background: rgba(199, 92, 82, 0.07);
+}
+
+.failed-action-explanation strong,
+.failed-action-explanation p,
+.failed-action-explanation small { display: block; margin: 0.35rem 0 0; line-height: 1.45; }
 
 .detail-label {
   margin: 0;

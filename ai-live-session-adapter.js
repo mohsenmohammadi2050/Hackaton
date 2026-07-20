@@ -8,12 +8,85 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function createAiLiveSessionAdapterApi(scenario, world, aiDecision, timelineFork, integrity, viewModels, comparison) {
   "use strict";
 
-  const ADAPTER_VERSION = "1.0.0";
+  const ADAPTER_VERSION = "1.1.0";
   function deepClone(value) { return JSON.parse(JSON.stringify(value)); }
   function deepFreeze(value) { if (!value || typeof value !== "object" || Object.isFrozen(value)) return value; Object.freeze(value); Object.values(value).forEach(deepFreeze); return value; }
 
   class AiLiveSessionError extends Error {
     constructor(code, message, cause) { super(message); this.name = "AiLiveSessionError"; this.code = code; this.cause = cause || null; }
+  }
+
+  function presentationAttempt(value, inheritedActorId) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new AiLiveSessionError("PRESENTATION_ATTEMPTS_SHAPE_INVALID", "AI decision attempts must contain objects.");
+    }
+    const actorId = value.actorId || inheritedActorId;
+    if (typeof actorId !== "string" || !Number.isInteger(value.attempt) || value.attempt < 1) {
+      throw new AiLiveSessionError("PRESENTATION_ATTEMPTS_SHAPE_INVALID", "AI decision attempt objects require an actorId and positive attempt number.");
+    }
+    const validationError = typeof value.validationError === "string"
+      ? value.validationError
+      : typeof value.message === "string" ? value.message : null;
+    const output = value.intentId
+      ? [{ actorId, intentId: value.intentId, action: value.action || null, status: value.status || "validated" }]
+      : Array.isArray(value.outputs) ? value.outputs.map((entry) => {
+        if (!entry || typeof entry !== "object" || Array.isArray(entry) || typeof entry.intentId !== "string") {
+          throw new AiLiveSessionError("PRESENTATION_ATTEMPTS_SHAPE_INVALID", "AI decision attempt outputs are invalid.");
+        }
+        return { actorId: entry.actorId || actorId, intentId: entry.intentId, action: entry.action || null, status: entry.status || "validated" };
+      }) : [];
+    return {
+      actorId,
+      attempt: value.attempt,
+      transportAttempt: Number.isInteger(value.transportAttempt) ? value.transportAttempt : null,
+      validationError,
+      latencyMs: Number.isFinite(value.latencyMs) && value.latencyMs >= 0 ? value.latencyMs : null,
+      reasoningRequested: typeof value.reasoningRequested === "boolean" ? value.reasoningRequested : null,
+      reasoningSupported: [true, false, "unknown"].includes(value.reasoningSupported) ? value.reasoningSupported : "unknown",
+      outputs: output
+    };
+  }
+
+  // AI decision diagnostics are actor-grouped internally. Timeline/fork consumers receive
+  // one branch-local, presentation-safe array and never provider payloads or raw reasoning.
+  function normalizeAuditForPresentation(audit) {
+    if (!audit || typeof audit !== "object" || Array.isArray(audit)) {
+      throw new AiLiveSessionError("PRESENTATION_ATTEMPTS_SHAPE_INVALID", "AI decision audit must be an object.");
+    }
+    const source = deepClone(audit);
+    let attempts;
+    if (source.attempts === undefined) {
+      attempts = [];
+      if (source.actors !== undefined && !Array.isArray(source.actors)) {
+        throw new AiLiveSessionError("PRESENTATION_ATTEMPTS_SHAPE_INVALID", "AI decision actor diagnostics must be an array.");
+      }
+      for (const actor of source.actors || []) {
+        if (!actor || typeof actor !== "object" || Array.isArray(actor) || typeof actor.actorId !== "string") {
+          throw new AiLiveSessionError("PRESENTATION_ATTEMPTS_SHAPE_INVALID", "AI decision actor diagnostics are invalid.");
+        }
+        const ownedAttempts = actor.attempts === undefined ? [] : actor.attempts;
+        if (!Array.isArray(ownedAttempts)) {
+          throw new AiLiveSessionError("PRESENTATION_ATTEMPTS_SHAPE_INVALID", "AI decision actor attempts must be an array.");
+        }
+        attempts.push(...ownedAttempts.map((entry) => presentationAttempt(entry, actor.actorId)));
+      }
+    } else {
+      const values = Array.isArray(source.attempts)
+        ? source.attempts
+        : source.attempts && typeof source.attempts === "object" ? [source.attempts] : null;
+      if (!values) throw new AiLiveSessionError("PRESENTATION_ATTEMPTS_SHAPE_INVALID", "AI decision attempts must be an array or one valid attempt object.");
+      attempts = values.map((entry) => presentationAttempt(entry));
+    }
+    delete source.actors;
+    delete source.acceptedIntentIds;
+    source.attempts = attempts;
+    return deepFreeze(source);
+  }
+
+  function normalizeTurnRecord(record) {
+    const copy = deepClone(record);
+    copy.audit = normalizeAuditForPresentation(copy.audit);
+    return copy;
   }
 
   function boundaryIndex(state) {
@@ -30,14 +103,16 @@
       id: `timeline-${state.branchId}`, kind, branchId: state.branchId,
       status: metadata.status || state.status, forkTurn: metadata.forkTurn ?? null,
       sourceBranchId: metadata.sourceBranchId || null, interventionEventId: metadata.interventionEventId || null,
-      state, turns: deepClone(turns), boundaries: boundaryIndex(state)
+      state, turns: turns.map(normalizeTurnRecord), boundaries: boundaryIndex(state)
     });
   }
 
   function scopeAudit(audit, before, after) {
-    const copy = deepClone(audit);
+    const copy = deepClone(normalizeAuditForPresentation(audit));
     const intentMap = new Map(before.map((intent, index) => [intent.id, after[index].id]));
-    for (const actor of copy.actors || []) for (const attempt of actor.attempts || []) if (attempt.intentId) attempt.intentId = intentMap.get(attempt.intentId) || attempt.intentId;
+    for (const attempt of copy.attempts) {
+      for (const output of attempt.outputs) if (output.intentId) output.intentId = intentMap.get(output.intentId) || output.intentId;
+    }
     if (copy.acceptedIntentIds) copy.acceptedIntentIds = copy.acceptedIntentIds.map((id) => intentMap.get(id) || id);
     return copy;
   }
@@ -83,11 +158,27 @@
     }
 
     function forkAt(turn) {
-      try { session = timelineFork.forkAlternate(session, { turn }); cursors.alternate = session.alternate.boundaries.at(-1).id; return currentView("alternate"); }
-      catch (error) { throw new AiLiveSessionError("FORK_FAILED", error.message, error); }
+      try {
+        const candidateSession = timelineFork.forkAlternate(session, { turn });
+        const candidateCursor = candidateSession.alternate.boundaries.at(-1).id;
+        const candidateView = viewModels.createTimelineView(candidateSession.alternate, { boundaryId: candidateCursor });
+        session = candidateSession;
+        cursors.alternate = candidateCursor;
+        return candidateView;
+      } catch (error) {
+        const code = error.code === "PRESENTATION_ATTEMPTS_SHAPE_INVALID" ? error.code : "FORK_FAILED";
+        throw new AiLiveSessionError(code, error.message, error);
+      }
     }
     function applyIntervention(request) {
-      try { session = timelineFork.applyAlternateIntervention(session, request); cursors.alternate = session.alternate.boundaries.at(-1).id; return currentView("alternate"); }
+      try {
+        const candidateSession = timelineFork.applyAlternateIntervention(session, request);
+        const candidateCursor = candidateSession.alternate.boundaries.at(-1).id;
+        const candidateView = viewModels.createTimelineView(candidateSession.alternate, { boundaryId: candidateCursor });
+        session = candidateSession;
+        cursors.alternate = candidateCursor;
+        return candidateView;
+      }
       catch (error) { throw new AiLiveSessionError("INTERVENTION_FAILED", error.message, error); }
     }
     function compare() { try { return comparison.compareTimelineSession(session); } catch (error) { throw new AiLiveSessionError("COMPARISON_FAILED", error.message, error); } }
@@ -105,5 +196,5 @@
     return Object.freeze({ version: ADAPTER_VERSION, mode: "ai-live", dynamic: true, currentView, viewAt, boundaryList, seekBoundary, seekTurn, resolveNext, forkAt, applyIntervention, compare, getSession: () => session, validate, capabilities });
   }
 
-  return Object.freeze({ ADAPTER_VERSION, AiLiveSessionError, createAiLiveSession });
+  return Object.freeze({ ADAPTER_VERSION, AiLiveSessionError, normalizeAuditForPresentation, createAiLiveSession });
 });

@@ -22,6 +22,58 @@
     return Object.freeze({ category: "PRESENTATION_ERROR", title: "Presentation error", recovery: "The latest completed boundary remains safe." });
   }
 
+  function failedActionExplanation(event) {
+    if (!event || event.category !== "Failed action") return null;
+    return Object.freeze({
+      title: `${event.actorName || "The character"} made a valid decision that the World could not execute.`,
+      detail: event.description,
+      validation: "The intent passed schema and owned-state validation; authoritative World conditions prevented execution.",
+      memory: (event.createdMemoryIds || []).length
+        ? "The failed attempt created an owned memory and may influence later decisions."
+        : "This failed attempt created no owned memory."
+    });
+  }
+
+  function terminalOutcomeSummary(view) {
+    if (!view?.outcome) return null;
+    const outcome = view.outcome;
+    const medicalIds = new Set(outcome.attribution?.medicalEventIds || []);
+    const medicalEvents = view.events.filter((event) => medicalIds.has(event.id));
+    const decisiveEvent = outcome.medical === "Saved"
+      ? medicalEvents.find((event) => event.category === "Treatment" && event.action === "Administer") || medicalEvents.at(-1)
+      : medicalEvents.find((event) => event.category === "Clock update") || medicalEvents.at(-1);
+    const outcomeEvent = view.events.findLast((event) => event.category === "Branch outcome") || null;
+    const administratorId = outcome.medical === "Saved" && decisiveEvent?.category === "Treatment" ? decisiveEvent.actorId : null;
+    const holderId = outcome.antidote?.possessorId || null;
+    const holderLocationId = outcome.antidote?.locationId || null;
+    const causalEvents = [];
+    if (administratorId && decisiveEvent) {
+      const discovery = view.events.find((event) => event.actorId === administratorId && event.category === "Item discovery" && event.turn <= decisiveEvent.turn);
+      if (discovery) causalEvents.push(discovery);
+      for (const event of view.events) {
+        if (event.actorId === administratorId && event.action === "Move" && event.turn >= (discovery?.turn || 0) && event.turn <= decisiveEvent.turn) causalEvents.push(event);
+      }
+      causalEvents.push(decisiveEvent);
+    } else if (decisiveEvent) causalEvents.push(decisiveEvent);
+    return Object.freeze({
+      terminalReason: outcome.medical === "Saved" ? "terminal-outcome" : "turn-limit",
+      terminalReasonLabel: outcome.medical === "Saved" ? "A terminal medical outcome was resolved." : `The turn-${view.clock.deadline} deadline was reached.`,
+      medical: outcome.medical,
+      truth: outcome.truth,
+      social: outcome.social,
+      completedTurns: view.clock.turn,
+      administratorId,
+      administratorName: administratorId ? view.npcs[administratorId]?.name || administratorId : null,
+      holderId,
+      holderName: holderId ? view.npcs[holderId]?.name || holderId : null,
+      holderLocationId,
+      holderLocationName: holderLocationId ? view.locations[holderLocationId]?.name || holderLocationId : null,
+      decisiveEventId: decisiveEvent?.id || outcomeEvent?.id || null,
+      decisiveDescription: decisiveEvent?.description || outcomeEvent?.description || "The authoritative branch outcome completed.",
+      causalChain: causalEvents.map((event) => ({ id: event.id, turn: event.turn, description: event.description }))
+    });
+  }
+
   function create(options) {
     const win = options.window;
     const doc = options.document;
@@ -164,7 +216,7 @@
               ${renderStoryBeat(view)}
               ${renderLocations(view)}
               <div class="world-legend" aria-label="Information legend"><span class="legend-chip fact">World fact</span><span class="legend-chip claim">Claim</span><span class="legend-chip belief">Belief</span><span class="legend-chip memory">Memory</span></div>
-              ${view.outcome ? renderOutcome(view.outcome, view.branch.kind) : renderOutcomePreview(view)}
+              ${view.outcome ? renderTerminalCompletion(view, capabilities) : renderOutcomePreview(view)}
             </section>
             <section class="timeline-column" aria-labelledby="timeline-title">
               <div class="panel-heading timeline-heading"><div><p class="section-kicker">Authoritative history</p><h2 id="timeline-title">Timeline</h2></div><span class="turn-count">${ui.frontiers[ui.branch] + 1} boundaries</span></div>
@@ -245,13 +297,25 @@
     }
     function renderEventInspector(event, view) {
       const cited = event.citedMemoryIds.map((id) => Object.values(view.npcs).flatMap((npc) => npc.memories).find((memory) => memory.id === id)).filter(Boolean);
-      return `<div class="inspector-header event-inspector-header"><div><p class="section-kicker">Event inspector</p><h2 id="inspector-title">Turn ${event.turn} · ${escape(event.phaseLabel)}</h2></div><span class="event-type-badge event-fact">${escape(event.category)}</span></div><div class="identity-line"><span>${escape(event.actorName)}</span><span>${escape(event.locationName)}</span><span>${escape(event.visibility)}</span></div><div class="inspector-scroll"><section class="inspector-section event-lede"><h3>What happened</h3><p>${escape(event.description)}</p></section><section class="inspector-section rationale-box"><p class="detail-label">Declared rationale</p><blockquote>${escape(event.rationale || "World resolution event")}</blockquote><p class="goal-served"><span>Goal served</span>${escape(event.goalId || "Authoritative consequence")}</p></section><section class="inspector-section"><h3>Witnesses & memories</h3><dl class="event-details"><div><dt>Witnesses</dt><dd>${event.witnessIds.map((id) => escape(view.npcs[id]?.name || id)).join(", ") || "None"}</dd></div><div><dt>Memories created</dt><dd>${event.createdMemoryIds.length ? event.createdMemoryIds.map((id) => `<code>${escape(id)}</code>`).join(" ") : "None"}</dd></div></dl></section><section class="inspector-section"><div class="section-label-row"><h3><span class="type-dot memory"></span>Cited memories</h3><small>${cited.length}</small></div>${cited.map((memory) => `<article class="memory-card compact"><span>${escape(memory.id)}</span><p>${escape(memory.description)}</p></article>`).join("") || `<p class="empty-copy">No owned memory cited.</p>`}</section><section class="inspector-section"><h3>Immediate consequences</h3><ul class="change-list">${event.changeLines.map((line) => `<li>${escape(line)}</li>`).join("") || `<li>No authoritative state change.</li>`}</ul></section><section class="inspector-section"><h3>Authoritative causal predecessors</h3>${event.causes.map((id) => `<button class="cause-link" data-action="select-live-event" data-event="${escape(id)}" data-turn="${event.turn}">${escape(id)} <span aria-hidden="true">↗</span></button>`).join("") || `<p class="empty-copy">This event is a causal root.</p>`}</section></div>`;
+      const failed = failedActionExplanation(event);
+      return `<div class="inspector-header event-inspector-header"><div><p class="section-kicker">Event inspector</p><h2 id="inspector-title">Turn ${event.turn} · ${escape(event.phaseLabel)}</h2></div><span class="event-type-badge event-fact">${escape(event.category)}</span></div><div class="identity-line"><span>${escape(event.actorName)}</span><span>${escape(event.locationName)}</span><span>${escape(event.visibility)}</span></div><div class="inspector-scroll"><section class="inspector-section event-lede"><h3>What happened</h3><p>${escape(event.description)}</p></section>${failed ? `<section class="inspector-section failed-action-explanation"><h3>Valid decision, blocked by World conditions</h3><strong>${escape(failed.title)}</strong><p>${escape(failed.validation)}</p><small>${escape(failed.memory)}</small></section>` : ""}<section class="inspector-section rationale-box"><p class="detail-label">Declared rationale</p><blockquote>${escape(event.rationale || "World resolution event")}</blockquote><p class="goal-served"><span>Goal served</span>${escape(event.goalId || "Authoritative consequence")}</p></section><section class="inspector-section"><h3>Witnesses & memories</h3><dl class="event-details"><div><dt>Witnesses</dt><dd>${event.witnessIds.map((id) => escape(view.npcs[id]?.name || id)).join(", ") || "None"}</dd></div><div><dt>Memories created</dt><dd>${event.createdMemoryIds.length ? event.createdMemoryIds.map((id) => `<code>${escape(id)}</code>`).join(" ") : "None"}</dd></div></dl></section><section class="inspector-section"><div class="section-label-row"><h3><span class="type-dot memory"></span>Cited memories</h3><small>${cited.length}</small></div>${cited.map((memory) => `<article class="memory-card compact"><span>${escape(memory.id)}</span><p>${escape(memory.description)}</p></article>`).join("") || `<p class="empty-copy">No owned memory cited.</p>`}</section><section class="inspector-section"><h3>Immediate consequences</h3><ul class="change-list">${event.changeLines.map((line) => `<li>${escape(line)}</li>`).join("") || `<li>No authoritative state change.</li>`}</ul></section><section class="inspector-section"><h3>Authoritative causal predecessors</h3>${event.causes.map((id) => `<button class="cause-link" data-action="select-live-event" data-event="${escape(id)}" data-turn="${event.turn}">${escape(id)} <span aria-hidden="true">↗</span></button>`).join("") || `<p class="empty-copy">This event is a causal root.</p>`}</section></div>`;
     }
     function renderOutcomePreview(view) {
       return `<section class="outcome-preview"><div><p class="section-kicker">Outcome preview</p><h2>The branch is still in motion</h2><p>Only frozen completed boundaries are visible. The authoritative outcome resolves by turn twelve.</p></div><dl><div><dt>Medical</dt><dd>Pending</dd></div><div><dt>Truth</dt><dd>Pending</dd></div><div><dt>Social</dt><dd>Pending</dd></div></dl></section>`;
     }
     function renderOutcome(outcome, kind) {
       return `<section class="completed-outcome"><header><div><p class="section-kicker">${escape(kind)} outcome</p><h2>${escape(outcome.medical)} · ${escape(outcome.truth)} · ${escape(outcome.social)}</h2></div><span class="outcome-complete-mark">Branch complete</span></header><dl class="outcome-results"><div class="outcome-result"><dt>Medical</dt><dd>${escape(outcome.medical)}</dd><p>${outcome.treatmentTurn ? `Treatment completed at turn ${outcome.treatmentTurn}.` : "No treatment before the deadline."}</p></div><div class="outcome-result"><dt>Truth</dt><dd>${escape(outcome.truth)}</dd><p>${outcome.attribution.truthEventIds.length} authoritative supporting event(s).</p></div><div class="outcome-result"><dt>Social</dt><dd>${escape(outcome.social)}</dd><p>${outcome.attribution.socialEventIds.length} trust or consensus contributor(s).</p></div></dl></section>`;
+    }
+
+    function renderTerminalCompletion(view, capabilities) {
+      const summary = terminalOutcomeSummary(view);
+      const holder = summary.administratorName
+        ? `${summary.administratorName} administered the antidote.`
+        : summary.holderName ? `${summary.holderName} held the antidote when time expired.`
+          : summary.holderLocationName ? `The antidote remained at ${summary.holderLocationName}.` : "No successful administration was resolved.";
+      const earlierTurns = capabilities.eligibleForkTurns.filter((turn) => turn < summary.completedTurns);
+      const forkTurn = earlierTurns.length ? Math.max(...earlierTurns) : null;
+      return `<section class="terminal-completion" data-terminal-reason="${summary.terminalReason}"><header><div><p class="section-kicker">Authoritative terminal outcome</p><h2>Simulation complete — Niko was ${escape(summary.medical.toLowerCase())}</h2><p>${escape(summary.terminalReasonLabel)} ${escape(holder)}</p></div><span class="outcome-complete-mark">Branch complete</span></header><p class="terminal-causal-chain">${summary.causalChain.length ? summary.causalChain.map((event) => escape(event.description)).join(" ") : escape(summary.decisiveDescription)}</p><dl class="outcome-results"><div class="outcome-result"><dt>Medical</dt><dd>${escape(summary.medical)}</dd></div><div class="outcome-result"><dt>Truth</dt><dd>${escape(summary.truth)}</dd></div><div class="outcome-result"><dt>Social</dt><dd>${escape(summary.social)}</dd></div><div class="outcome-result"><dt>Completed turns</dt><dd>${summary.completedTurns}</dd></div></dl><div class="terminal-actions">${summary.decisiveEventId ? `<button class="button button-secondary button-compact" data-action="select-live-event" data-event="${escape(summary.decisiveEventId)}" data-turn="${summary.completedTurns}">Inspect decisive event</button>` : ""}${forkTurn !== null ? `<button class="button button-secondary button-compact" data-action="fork-terminal" data-turn="${forkTurn}">Fork an earlier turn</button>` : ""}${capabilities.hasAlternate ? `<button class="button button-secondary button-compact" data-action="open-comparison" ${canCompare() ? "" : "disabled"}>Compare branches</button>` : ""}<button class="button button-tertiary button-compact" data-action="back-start">Return to start</button></div></section>`;
     }
 
     function renderComposer(view) {
@@ -356,6 +420,18 @@
       } catch (error) { fail(error); }
     }
 
+    function openForkAt(turn) {
+      stopTimer();
+      adapter.forkAt(turn);
+      ui.branch = "alternate";
+      ui.frontiers.alternate = list("alternate").length - 1;
+      ui.selections.alternate = list("alternate").at(-1).id;
+      ui.composer = true;
+      ui.selection = { type: "event", id: selectedView("alternate").events.at(-1)?.id };
+      render();
+      announce(`Alternate forked from completed turn ${turn}. Choose exactly one intervention.`);
+    }
+
     function handleAction(control) {
       const action = control.dataset.action;
       if (action === "retry-live") { ui.error = null; ui.errorCode = null; if (adapter) { render(); step(); } else start(); return true; }
@@ -370,7 +446,8 @@
       if (action === "select-live-npc") { ui.selection = { type: "npc", id: control.dataset.npc }; render(); announce(`${selectedView().npcs[control.dataset.npc].name} owned perspective opened.`); return true; }
       if (action === "select-live-boundary") { ui.selections[ui.branch] = control.dataset.boundary; const view = selectedView(); ui.selection = { type: "event", id: view.currentTurnEvents[0]?.id || view.events.at(-1)?.id }; render(); return true; }
       if (action === "select-live-event") { const event = frontierView().events.find((item) => item.id === control.dataset.event); if (event) { const boundary = list().filter((item) => item.turn === event.turn).at(-1); ui.selections[ui.branch] = boundary.id; ui.selection = { type: "event", id: event.id }; render(); } return true; }
-      if (action === "open-fork") { stopTimer(); try { const view = selectedView("original"); adapter.forkAt(view.boundary.turn); ui.branch = "alternate"; ui.frontiers.alternate = list("alternate").length - 1; ui.selections.alternate = list("alternate").at(-1).id; ui.composer = true; ui.selection = { type: "event", id: selectedView("alternate").events.at(-1)?.id }; render(); announce(`Alternate forked from completed turn ${view.boundary.turn}. Choose exactly one intervention.`); } catch (error) { fail(error); } return true; }
+      if (action === "open-fork") { try { openForkAt(selectedView("original").boundary.turn); } catch (error) { fail(error); } return true; }
+      if (action === "fork-terminal") { try { openForkAt(Number(control.dataset.turn)); } catch (error) { fail(error); } return true; }
       if (action === "close-fork") { ui.composer = false; render(); return true; }
       if (action === "set-intervention-category") { ui.interventionCategory = control.dataset.category; render(); return true; }
       if (action === "apply-demo-intervention" && showDemoTools && selectedView().boundary.turn === demoConfig?.forkTurn) { applyIntervention(demoConfig.intervention); return true; }
@@ -386,5 +463,5 @@
     return Object.freeze({ start, render, handleAction });
   }
 
-  return Object.freeze({ classifyLiveError, create });
+  return Object.freeze({ classifyLiveError, failedActionExplanation, terminalOutcomeSummary, create });
 });
