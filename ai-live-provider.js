@@ -61,9 +61,8 @@
     const response = await fetchImpl(options.endpoint || "/api/ai/config", { headers: { accept: "application/json" } });
     const payload = await response.json().catch(() => null);
     if (!response.ok || !payload) throw new AiProviderError(payload?.error?.code || "AI_PROVIDER_ERROR", payload?.error?.message || "AI provider status is unavailable.");
-    return Object.freeze({ configured: Boolean(payload.configured), model: payload.model || null, missing: Object.freeze((payload.missing || []).slice()) });
+    return Object.freeze({ configured: Boolean(payload.configured), model: payload.model || null, diagnosticLogging: Boolean(payload.diagnosticLogging), missing: Object.freeze((payload.missing || []).slice()) });
   }
 
   return Object.freeze({ PROVIDER_PROTOCOL, AiProviderError, createProvider, getConfiguration });
 });
-

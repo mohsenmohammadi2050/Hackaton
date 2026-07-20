@@ -48,6 +48,7 @@
     let original = timeline("Original", initialState, []);
     let session = timelineFork.createTimelineSession(original);
     const cursors = { original: original.boundaries[0].id, alternate: null };
+    const diagnosticLogger = typeof options.diagnosticLogger === "function" ? options.diagnosticLogger : null;
 
     function timelineFor(branch) {
       if (branch === "original") return session.original;
@@ -65,7 +66,7 @@
       if (current.state.status === "completed") return currentView(branch);
       if (branch === "alternate" && current.status !== "intervened") throw new AiLiveSessionError("INTERVENTION_REQUIRED", "Alternate requires exactly one intervention before AI continuation.");
       let result;
-      try { result = await aiDecision.decideAndResolveTurn(current.state, provider, { maxAttempts: options.maxAttempts || 3, onStatus: status }); }
+      try { result = await aiDecision.decideAndResolveTurn(current.state, provider, { maxAttempts: options.maxAttempts || 3, onStatus: status, onDiagnostic: diagnosticLogger }); }
       catch (error) { throw new AiLiveSessionError(error.code || "AI_TURN_FAILED", error.message, error); }
       if (branch === "original") {
         const nextTurns = current.turns.concat([{ turn: result.state.turn, intents: result.intents, audit: result.audit }]);

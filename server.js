@@ -3,6 +3,7 @@
 const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
+const intentContract = require("./provider-intent-contract");
 
 const MAX_REQUEST_BYTES = 128 * 1024;
 const ALLOWED_PROJECTION_FIELDS = new Set([
@@ -39,6 +40,8 @@ function loadConfiguration(environment = process.env, rootDir = __dirname) {
     model: String(values.AI_MODEL || ""),
     timeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 60000,
     maxRetries: Number.isInteger(maxRetries) && maxRetries >= 0 && maxRetries <= 5 ? maxRetries : 2,
+    structuredOutputMode: String(values.AI_STRUCTURED_OUTPUT_MODE || "json_schema").toLowerCase(),
+    diagnosticLogging: String(values.AI_DIAGNOSTIC_LOGGING || "").toLowerCase() === "true" || String(values.NODE_ENV || "").toLowerCase() === "development",
     port: Number(values.PORT || 8080)
   });
 }
@@ -47,7 +50,8 @@ function configurationStatus(configuration) {
   const missing = [];
   if (!configuration.baseUrl) missing.push("AI_PROVIDER_BASE_URL");
   if (!configuration.model) missing.push("AI_MODEL");
-  return Object.freeze({ configured: missing.length === 0, model: configuration.model || null, missing });
+  if (!["json_schema", "json_object"].includes(configuration.structuredOutputMode || "json_schema")) missing.push("AI_STRUCTURED_OUTPUT_MODE (json_schema or json_object)");
+  return Object.freeze({ configured: missing.length === 0, model: configuration.model || null, structuredOutputMode: configuration.structuredOutputMode || "json_schema", diagnosticLogging: Boolean(configuration.diagnosticLogging), missing });
 }
 
 function validateDecisionRequest(value) {
@@ -120,25 +124,68 @@ function providerMessages(request, feedback) {
   ];
 }
 
+function isOpenRouter(baseUrl) {
+  try {
+    const hostname = new URL(baseUrl).hostname.toLowerCase();
+    return hostname === "openrouter.ai" || hostname.endsWith(".openrouter.ai");
+  } catch { return false; }
+}
+
+function responseFormatFor(request, configuration) {
+  if ((configuration.structuredOutputMode || "json_schema") === "json_object") return { type: "json_object" };
+  return {
+    type: "json_schema",
+    json_schema: {
+      name: "forked_fates_intent",
+      strict: true,
+      schema: intentContract.createIntentJsonSchema(request.projection)
+    }
+  };
+}
+
+function normalizedModelDiagnostic(content, error) {
+  let parsed = null;
+  try { parsed = typeof content === "string" ? JSON.parse(content) : content; } catch { parsed = null; }
+  return Object.freeze({
+    action: typeof parsed?.action === "string" ? parsed.action : null,
+    fields: parsed && typeof parsed === "object" && !Array.isArray(parsed) ? Object.keys(parsed).sort() : [],
+    validationError: error?.message || null
+  });
+}
+
+function writeDiagnostic(configuration, record) {
+  if (!configuration.diagnosticLogging) return;
+  const logger = configuration.logger || console;
+  const write = typeof logger.info === "function" ? logger.info.bind(logger) : typeof logger.log === "function" ? logger.log.bind(logger) : null;
+  if (write) write("[Forked Fates AI provider]", Object.freeze(record));
+}
+
+function structuredOutputError(configuration) {
+  const mode = configuration.structuredOutputMode || "json_schema";
+  const message = mode === "json_schema"
+    ? "Configured provider/model rejected strict JSON Schema output. Choose a route that supports response_format json_schema, or explicitly set AI_STRUCTURED_OUTPUT_MODE=json_object to use validated JSON mode."
+    : "Configured provider/model rejected explicitly configured JSON object output.";
+  return Object.assign(new Error(message), { code: "AI_STRUCTURED_OUTPUT_UNSUPPORTED", status: 502, retryable: false });
+}
+
 async function requestModelDecision(request, configuration, fetchImpl = globalThis.fetch) {
   const status = configurationStatus(configuration);
   if (!status.configured) throw Object.assign(new Error(`AI Live setup is incomplete: ${status.missing.join(", ")}.`), { code: "AI_NOT_CONFIGURED", status: 503 });
   if (typeof fetchImpl !== "function") throw Object.assign(new Error("This Node runtime does not provide fetch."), { code: "AI_TRANSPORT_UNAVAILABLE", status: 503 });
   let feedback = request.validationFeedback || null;
-  let useResponseFormat = true;
   let lastError = null;
   for (let attempt = 0; attempt <= configuration.maxRetries; attempt += 1) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), configuration.timeoutMs);
     try {
-      const body = { model: configuration.model, messages: providerMessages(request, feedback), temperature: 0.2 };
-      if (useResponseFormat) body.response_format = { type: "json_object" };
+      const body = { model: configuration.model, messages: providerMessages(request, feedback), temperature: 0.2, response_format: responseFormatFor(request, configuration) };
+      if (isOpenRouter(configuration.baseUrl)) body.provider = { require_parameters: true };
       const headers = { "content-type": "application/json", accept: "application/json" };
       if (configuration.apiKey) headers.authorization = `Bearer ${configuration.apiKey}`;
       const response = await fetchImpl(`${configuration.baseUrl}/chat/completions`, { method: "POST", headers, body: JSON.stringify(body), signal: controller.signal });
       const raw = await response.text();
       if (!response.ok) {
-        if (useResponseFormat && (response.status === 400 || response.status === 422)) { useResponseFormat = false; lastError = new Error("Provider rejected response_format; retrying without it."); continue; }
+        if (response.status === 400 || response.status === 422) throw structuredOutputError(configuration);
         const retryable = response.status === 408 || response.status === 429 || response.status >= 500;
         const error = Object.assign(new Error(`AI provider returned HTTP ${response.status}.`), { code: "AI_HTTP_ERROR", status: 502, retryable });
         if (!retryable || attempt >= configuration.maxRetries) throw error;
@@ -148,8 +195,13 @@ async function requestModelDecision(request, configuration, fetchImpl = globalTh
       let envelope;
       try { envelope = JSON.parse(raw); } catch { throw Object.assign(new Error("AI provider returned invalid JSON."), { code: "AI_PROVIDER_RESPONSE", status: 502, retryable: true }); }
       const content = envelope?.choices?.[0]?.message?.content;
-      try { return extractJsonObject(content); }
+      try {
+        const output = extractJsonObject(content);
+        writeDiagnostic(configuration, { actorId: request.actorId, attempt: request.attempt, transportAttempt: attempt + 1, ...normalizedModelDiagnostic(output) });
+        return output;
+      }
       catch (error) {
+        writeDiagnostic(configuration, { actorId: request.actorId, attempt: request.attempt, transportAttempt: attempt + 1, ...normalizedModelDiagnostic(content, error) });
         feedback = `Return one valid JSON object. ${error.message}`;
         lastError = Object.assign(error, { code: "INVALID_MODEL_RESPONSE", status: 502, retryable: true });
         if (attempt >= configuration.maxRetries) throw lastError;
@@ -237,4 +289,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = Object.freeze({ MAX_REQUEST_BYTES, parseEnvFile, loadConfiguration, configurationStatus, validateDecisionRequest, extractJsonObject, requestModelDecision, createAppServer });
+module.exports = Object.freeze({ MAX_REQUEST_BYTES, parseEnvFile, loadConfiguration, configurationStatus, validateDecisionRequest, extractJsonObject, isOpenRouter, responseFormatFor, requestModelDecision, createAppServer });

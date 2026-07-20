@@ -78,7 +78,11 @@
               error.code = "AI_NOT_CONFIGURED";
               throw error;
             }
-            adapter = aiAdapterApi.createAiLiveSession(providerApi.createProvider());
+            adapter = aiAdapterApi.createAiLiveSession(providerApi.createProvider(), {
+              diagnosticLogger: configuration.diagnosticLogging && win.console?.info
+                ? (record) => win.console.info("[Forked Fates AI decision]", record)
+                : null
+            });
           } else {
             if (!adapterApi || typeof adapterApi.createLiveSession !== "function") throw new Error("Deterministic simulation modules are unavailable in this build.");
             adapter = adapterApi.createLiveSession();

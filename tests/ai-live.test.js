@@ -99,24 +99,23 @@ test("Server rejects projection privacy violations", () => {
   assert.throws(() => server.validateDecisionRequest({ protocol: decision.PROVIDER_PROTOCOL, actorId: "mara", projection, attempt: 1 }), (error) => error.code === "PRIVACY_BOUNDARY");
 });
 
-test("Provider transport extracts JSON and retries without response_format", async () => {
+test("Explicit validated JSON-object mode preserves compatible provider transport", async () => {
   const requests = [];
   const fetchImpl = async (_url, options) => {
     requests.push(JSON.parse(options.body));
-    if (requests.length === 1) return { ok: false, status: 400, text: async () => "unsupported" };
     return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: "```json\n{\"id\":\"intent-x\"}\n```" } }] }) };
   };
-  const output = await server.requestModelDecision({ actorId: "mara", attempt: 1, projection: {}, outputContract: {} }, { baseUrl: "https://provider.test/v1", apiKey: "secret", model: "free-model", timeoutMs: 100, maxRetries: 2 }, fetchImpl);
+  const output = await server.requestModelDecision({ actorId: "mara", attempt: 1, projection: {}, outputContract: {} }, { baseUrl: "https://provider.test/v1", apiKey: "secret", model: "free-model", timeoutMs: 100, maxRetries: 2, structuredOutputMode: "json_object" }, fetchImpl);
   assert.equal(output, '{"id":"intent-x"}');
-  assert.ok(requests[0].response_format);
-  assert.equal("response_format" in requests[1], false);
+  assert.deepEqual(requests[0].response_format, { type: "json_object" });
+  assert.equal(requests.length, 1);
 });
 
 test("Provider timeout and HTTP failures have structured error codes", async () => {
   const timeoutFetch = (_url, options) => new Promise((_resolve, reject) => options.signal.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" }))));
-  await assert.rejects(server.requestModelDecision({}, { baseUrl: "https://provider.test/v1", model: "m", timeoutMs: 5, maxRetries: 0 }, timeoutFetch), (error) => error.code === "AI_TIMEOUT");
+  await assert.rejects(server.requestModelDecision({}, { baseUrl: "https://provider.test/v1", model: "m", timeoutMs: 5, maxRetries: 0, structuredOutputMode: "json_object" }, timeoutFetch), (error) => error.code === "AI_TIMEOUT");
   const httpFetch = async () => ({ ok: false, status: 401, text: async () => "unauthorized" });
-  await assert.rejects(server.requestModelDecision({}, { baseUrl: "https://provider.test/v1", model: "m", timeoutMs: 100, maxRetries: 0 }, httpFetch), (error) => error.code === "AI_HTTP_ERROR");
+  await assert.rejects(server.requestModelDecision({}, { baseUrl: "https://provider.test/v1", model: "m", timeoutMs: 100, maxRetries: 0, structuredOutputMode: "json_object" }, httpFetch), (error) => error.code === "AI_HTTP_ERROR");
 });
 
 test("Missing provider configuration produces an explicit setup error", async () => {
