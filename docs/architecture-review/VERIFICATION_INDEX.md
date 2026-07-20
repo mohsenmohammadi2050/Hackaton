@@ -1,11 +1,21 @@
 # Forked Fates Verification Index
 
-**Current checkpoint:** Phase 8 final (`phase-8-D2-demo-ready-product`)  
-**Current automated result:** 107 tests passing, 0 failing  
-**Approved Original replay SHA-256:** `6d9dfe9b9f628bf83a4f8fda4d39452260872c978335ddf7caabb9eb44a2501f`  
+**Current checkpoint:** Phase 8.1 D5 (`phase-8.1-D5-ai-live-demo-ready`)
+
+**Current automated result:** 134 tests passing, 0 failing
+
+**Approved Original replay SHA-256:** `6d9dfe9b9f628bf83a4f8fda4d39452260872c978335ddf7caabb9eb44a2501f`
+
 **Approved demo Alternate SHA-256:** `73e88589d7d5fcf8554ad69a2fe64137386402143c878a859dc793251da98e5a`
 
 ## Current-phase addendum
+
+### Phase 8.1 — AI Live Product Recovery
+
+- **Checkpoint commits:** D0 baseline protection; D1 provider-backed AI Live; D2 truthful comparison; D3 visual narrative world; D4 workspace clarity; D5 verified release.
+- **Evidence:** [`../../PHASE_8_1_IMPLEMENTATION_REPORT.md`](../../PHASE_8_1_IMPLEMENTATION_REPORT.md), [`../DEMO_PATH.md`](../DEMO_PATH.md)
+- **Tests added:** 10 in `tests/ai-live.test.js`, 6 in `tests/comparison-truthfulness.test.js`, 4 in `tests/narrative-world.test.js`, and 7 in `tests/workspace-ux.test.js`.
+- **Guarantees:** server-side provider secrets, same-origin OpenAI-compatible transport, four parallel owned-state decisions, strict no-fallback validation, atomic World resolution, truthful difference classification, ineffective-intervention feedback, visible fork horizon, local narrative assets, authoritative summaries, stable internal scrolling, follow toggle, responsive 375px containment, and independently executable Deterministic/Recorded modes.
 
 ### Phase 7.1 — Causal Integrity Hardening and review patch
 
@@ -151,7 +161,11 @@ The phase history below is the original Phase 7 audit index and remains useful a
 | `tests/timeline-fork-engine.test.js` | 11 | Fork Phase 7 |
 | `tests/causal-integrity.test.js` | 30 | Phase 7.1 causal/reference integrity |
 | `tests/phase8-integration.test.js` | 10 | Phase 8 presentation integration and demo |
-| **Total** | **107** | All completed phases |
+| `tests/ai-live.test.js` | 10 | Phase 8.1 provider transport, privacy, validation, and atomicity |
+| `tests/comparison-truthfulness.test.js` | 6 | Phase 8.1 difference classification and fork guidance |
+| `tests/narrative-world.test.js` | 4 | Phase 8.1 authoritative narrative presentation and local assets |
+| `tests/workspace-ux.test.js` | 7 | Phase 8.1 playback, scrolling, intervention, responsive, and error UX |
+| **Total** | **134** | All completed phases |
 
 ## Cross-phase regression guarantees
 

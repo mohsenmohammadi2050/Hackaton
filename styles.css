@@ -1831,6 +1831,8 @@ code {
   .historical-banner { flex-direction: column; }
   .playback-control { align-items: stretch; flex-direction: column; }
   .playback-buttons { display: grid; grid-template-columns: repeat(3, 1fr); }
+  .button-fork,
+  .button-resolve { width: 100%; min-width: 0; flex: 0 0 auto; }
   .outcome-results { grid-template-columns: 1fr; }
   .outcome-result { border-right: 0; border-bottom: 1px solid var(--line); }
   .outcome-result:last-child { border-bottom: 0; }
@@ -2197,6 +2199,10 @@ code {
 }
 
 @media (max-width: 620px) {
+  .workspace-topbar { overflow: hidden; }
+  .status-strip { width: 100%; min-width: 0; max-width: 100%; }
+  .button-fork,
+  .button-resolve { width: 100%; min-width: 0; flex: 0 0 auto; }
   .modal-backdrop { padding: 0; place-items: end center; }
   .intervention-modal { max-height: 92vh; overflow-y: auto; border-radius: 0; }
   .intervention-tabs { overflow-x: auto; }

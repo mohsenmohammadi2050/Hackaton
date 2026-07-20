@@ -1,8 +1,10 @@
 # Forked Fates Architecture
 
-**Snapshot:** commit `0635ad1`, tag `phase-7-D2-isolated-timeline-fork-engine`  
-**Runtime:** framework-free JavaScript, CommonJS for tests and UMD-style browser compatibility  
-**Current product state:** immutable Recorded Original plus a demo-ready Live UI for authoritative playback, one isolated Alternate, typed intervention, and validated branch comparison
+**Snapshot:** Phase 8.1 D5 release (`phase-8.1-D5-ai-live-demo-ready`)
+
+**Runtime:** framework-free JavaScript, CommonJS for tests and UMD-style browser compatibility
+
+**Current product state:** provider-backed AI Live, offline deterministic simulation, immutable Recorded Demo, one isolated Alternate, typed intervention, and validated branch comparison
 
 ## 1. Executive summary
 
@@ -13,7 +15,9 @@ Forked Fates deliberately contains two independent story systems:
 
 The World Engine is the only module allowed to create authoritative state transitions. Other layers may validate, project, configure, orchestrate, or derive display-only comparisons, but they do not directly edit World state.
 
-Phase 8 adds a strict presentation integration boundary: `app.js` routes mode selection, `live-presentation.js` owns UI state, and `live-session-adapter.js` is the only module used by the Live UI to reach simulation orchestration. `live-view-models.js` and `branch-comparison.js` are immutable derivation modules; comparison always runs Timeline Integrity validation first.
+Phase 8 adds a strict presentation integration boundary: `app.js` routes mode selection, `live-presentation.js` owns UI state, and session adapters are the only modules used by the Live UI to reach simulation orchestration. `live-view-models.js` and `branch-comparison.js` are immutable derivation modules; comparison always runs Timeline Integrity validation first.
+
+Phase 8.1 adds a parallel asynchronous AI integration path without changing World, approved policies, or Recorded data. `ai-live-session-adapter.js` owns the incremental AI session, `ai-decision-layer.js` collects and validates four provider results in parallel, and `ai-live-provider.js` talks only to the same-origin Node proxy. `server.js` holds provider configuration and secrets, bounds and validates browser requests, and calls an OpenAI-compatible Chat Completions endpoint. The World Engine still receives only a complete validated intent set.
 
 ## 2. High-level architecture
 
@@ -32,11 +36,15 @@ world-scenario.js -> World Engine <- Decision Layer <- Provider <- NPC policy
                            +---- Timeline Fork Engine
 
 Live presentation path
-app.js -> live-presentation.js -> live-session-adapter.js
+app.js -> live-presentation.js -> live-session-adapter.js (deterministic)
+                              |-> ai-live-session-adapter.js (AI Live)
                                       |-> Timeline Fork Engine
                                       |-> Timeline Integrity
                                       |-> Live View Models
                                       +-> Branch Comparison
+
+AI transport path
+ai-live-provider.js -> same-origin /api/ai/decision -> server.js -> configured OpenAI-compatible provider
 ```
 
 The dependency graph is intentionally not symmetric:
@@ -57,6 +65,8 @@ See [SYSTEM_DIAGRAM.md](SYSTEM_DIAGRAM.md) for detailed diagrams.
 | Recorded | `recorded-data.js` | Authored 12-turn Original snapshots, events, character histories, outcomes, and stable Recorded identities | World derivation, autonomous decisions, alternate simulation |
 | Presentation | `index.html`, `styles.css`, `app.js`, `live-presentation.js` | Mode routing, Start, briefing, workspaces, frozen-boundary playback, timeline/inspectors, intervention composer, branch switching, comparison rendering, recovery | World logic, hidden-truth derivation, direct provider/World calls |
 | Presentation integration | `live-session-adapter.js`, `live-view-models.js`, `branch-comparison.js`, `demo-path-config.js` | Safe orchestration facade, immutable display projections, validated pure comparison, approved demo configuration | Authoritative mutation, policy logic, Recorded derivation |
+| AI Live integration | `ai-live-session-adapter.js`, `ai-decision-layer.js`, `ai-live-provider.js` | Incremental asynchronous session, four parallel owned-projection requests, parse/validation/retry, visible atomic failure | Provider secrets, deterministic fallback, direct state mutation |
+| Local provider proxy | `server.js` | Static serving, environment configuration, same-origin API, request limits, timeout/retry, OpenAI-compatible transport, structured redacted failures | Browser-held secrets, intent legality, World mutation, session state |
 | Scenario | `world-scenario.js` | Initial World data, facts, NPC traits/goals/trust/memories/beliefs, locations, priority, approved predetermined intents | Runtime mutation or presentation |
 | World | `world-engine.js` | Authoritative state, legal action resolution, events, memories, beliefs, trust, public record, clock, patient, outcomes, boundaries, intervention resolution, fork cloning, branch identity remapping | NPC choice, UI rendering, provider configuration |
 | Decision | `decision-layer.js` | Owned-state projections, relevant-memory selection, output parsing, decision validation, retry orchestration, four-intent collection | Authoritative mutation, policy selection, hidden state exposure |
@@ -153,14 +163,25 @@ Presentation replays authored snapshots. This is the permanent demo fallback and
 
 ## 8. Provider lifecycle
 
-1. Configuration is passed to `createProvider`.
-2. `DeterministicProvider` wraps the existing four rule policies, or `LLMProvider` wraps an injected invocation function.
-3. Decision sends a `forked-fates-decision-provider-v1` request containing only owned state.
-4. The provider returns one JSON string.
-5. Decision parses and validates the candidate.
-6. Provider execution failures are classified as malformed output and use existing frozen-boundary retry.
+### 8.1 Deterministic provider
 
-The LLM adapter has no SDK, HTTP transport, credentials, prompt templates, or external API calls. GPT, Claude, local, mock, or future implementations are configuration/adapter concerns; Decision and World do not change.
+1. `DeterministicProvider` wraps the unchanged four rule policies.
+2. Decision sends a `forked-fates-decision-provider-v1` request containing one owned projection.
+3. The provider returns one JSON string; Decision parses and validates it.
+4. Frozen-boundary retry and World resolution remain unchanged and reproducible.
+
+### 8.2 AI Live provider
+
+1. The browser reads only redacted configuration status from `/api/ai/config`; it never receives the key or provider base URL.
+2. `ai-decision-layer.js` creates four separate owned projections and requests all four decisions concurrently through the provider protocol.
+3. `ai-live-provider.js` posts each protocol request to same-origin `/api/ai/decision`.
+4. `server.js` allowlists the envelope and projection fields, rejects private-state boundary violations, and builds one stateless model prompt.
+5. The server calls `${AI_PROVIDER_BASE_URL}/chat/completions` with an optional bearer key, timeout, bounded retry, and `response_format` compatibility fallback.
+6. The server extracts one JSON object. The browser Decision validation then enforces actor, turn, action, target, item, location, goal, and owned-memory legality.
+7. Only after all four candidates validate does the unchanged World Engine resolve the complete atomic turn.
+8. Timeout, HTTP, invalid output, or exhausted retry freezes the prior boundary and renders a visible error. No deterministic fallback occurs.
+
+GPT, Claude, local models, and future OpenAI-compatible services remain configuration concerns. Decision and World do not change when provider configuration changes.
 
 ## 9. Intervention lifecycle
 

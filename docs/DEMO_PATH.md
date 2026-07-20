@@ -1,68 +1,79 @@
-# Phase 8 Approved Demo Path
+# Phase 8.1 Recommended Demo Path
 
-**Configuration:** `demo-key-evidence-to-mara-t00`  
-**Target duration:** 2 minutes 30 seconds; hard ceiling 3 minutes  
-**Provider:** DeterministicProvider  
-**External services:** none
+**Configuration:** `demo-key-evidence-to-mara-t00`
 
-## Why this intervention was selected
+**Mode:** Deterministic Simulation
 
-`npm run demo:search` evaluates a small, fixed list of legal information interventions in deterministic order. Invalid continuations are reported as rejected candidates rather than stopping the search. The approved candidate ranks first by the committed score function:
+**URL:** `http://127.0.0.1:8080/?demo=1`
 
-- fork at completed turn 0;
-- give Mara true evidence for `fact-case-spare-key` at confidence 90;
-- first changed autonomous decision occurs at turn 1;
-- Original outcome: **Lost / Exposed / Fractured**;
-- Alternate outcome: **Lost / Obscured / Fractured**;
-- final antidote holder changes from Orin to Sera;
-- 35 autonomous intents and four directed trust relationships differ across the completed branches.
+**Target duration:** 2 minutes 30 seconds
 
-This is a clear causal demonstration without changing NPC policies or adding story logic.
+**External services:** none for this reproducible competition path
 
-## Presenter script
+AI Live is genuine provider-backed execution and should be shown separately with a configured provider. The exact causal demo uses Deterministic mode so the visible differences are repeatable.
+
+## Selected fork and intervention
+
+1. Complete the deterministic Original or leave it running while reviewing completed history.
+2. Select the completed **Turn 0** boundary.
+3. Choose **Fork from turn 0**.
+4. In normal product mode, select:
+   - category: **Information**;
+   - recipient: **Mara Vale**;
+   - information: **The empty case was opened with the spare Clinic key**;
+   - confidence: **90**.
+5. Choose **Create Alternate event**.
+
+With `?demo=1`, **Load competition demo setup** supplies exactly the same typed event. It is hidden in normal product mode and enabled only at the documented turn.
+
+## Verified visible causal differences
+
+- Mara's Turn 1 action changes from **Investigate** to **Move**.
+- Later authoritative events and locations diverge.
+- Four directed trust relationships differ.
+- The final antidote holder changes from **Orin** to **Sera**.
+- Truth changes from **Exposed** to **Obscured**.
+- Medical and Social remain **Lost** and **Fractured**.
+- The comparison identifies authoritative event-cause edges separately from the explicitly comparison-only decision link.
+
+## Presenter sequence
 
 ### 0:00–0:20 — Frame the product
 
-1. Open the Start screen.
-2. Read the promise: “Change one belief. Watch a different story emerge.”
-3. Choose **Begin The Last Antidote**.
-4. On Briefing, note four people, partial truths, and twelve turns. Do not reveal the hidden causal chain.
-5. Choose **Start live simulation**.
+1. On Start, point out **Start AI Live Simulation**, **Explore Recorded Demo**, and the secondary **Deterministic Simulation**.
+2. State: “Change one belief. Watch a different story emerge.”
+3. Briefly explain that each character sees only their own memories, beliefs, observations, inventory, and trust.
 
-### 0:20–0:55 — Establish authoritative Live playback
+### 0:20–0:55 — Establish the authoritative Original
 
-1. At turn 0, point out three locations, four autonomous NPCs, patient clock, Live badge, and frozen-boundary label.
-2. Choose **Step** once. Show that one click reveals one complete turn.
-3. Inspect Mara and one event. Point out owned memories, beliefs as beliefs rather than truth, declared rationale, goal, witnesses, and causal predecessors.
-4. Choose **Run** and let the Original reach turn 12.
-5. State the Original outcome: **Lost / Exposed / Fractured**.
+1. Enter Deterministic Simulation.
+2. Point out the three illustrated locations, four character portraits, Niko, antidote indicator, and current story beat.
+3. Choose **Next Turn** once; inspect Mara and one authoritative event.
+4. Toggle **Follow live events** Off, select Turn 0, and note that the simulation can continue without moving the review position.
+5. Toggle it On and choose **Run to End**. The Original concludes **Lost / Exposed / Fractured**.
 
-### 0:55–1:20 — Fork and intervene
+### 0:55–1:25 — Fork and intervene
 
-1. In the Original timeline select the completed turn 0 boundary.
-2. Choose **Fork from turn 0**.
-3. State that the Original is immutable and the Alternate owns every post-fork identity.
-4. In the typed-event composer choose **Use approved demo intervention**.
-5. Point out the intervention event followed by its authoritative private memory/belief consequence.
-6. Choose **Resolve Alternate future**.
+1. Select Original Turn 0 and fork.
+2. State that the Original stays immutable and every Alternate identity is branch-local.
+3. Apply the selected Information event.
+4. Point out the private intervention event and its World-authored memory/belief consequence.
+5. Prepare and run the Alternate.
 
-### 1:20–1:50 — Reveal divergence
+### 1:25–2:30 — Compare futures
 
-1. Choose **Step** once and inspect Mara’s turn-one decision. It differs because her owned belief is now available before she decides.
-2. Choose **Run** to complete the Alternate.
-3. Switch between **Original** and **Alternate** once to demonstrate branch-local timelines and outcomes.
+1. Open **Compare outcomes**.
+2. Show the first changed action at Turn 1 and the evidence-only classifications that are not mislabeled as action changes.
+3. Show Truth **Exposed → Obscured**, antidote holder **Orin → Sera**, and the trust deltas.
+4. Show the authoritative causal support path and the separately labeled comparison-only link.
 
-### 1:50–2:30 — Compare conclusions
+## AI Live proof before or after the exact demo
 
-1. Choose **Compare outcomes**.
-2. Show side-by-side outcomes: Truth changes from **Exposed** to **Obscured**; Medical and Social remain **Lost** and **Fractured**.
-3. Show the changed autonomous intents, four trust deltas, and final antidote holder (Orin versus Sera).
-4. Show the validated authoritative outcome-support path.
-5. Explicitly identify the comparison-only decision link: it reports correlation after the intervention and is not presented as an authoritative event-cause edge.
+Configure `.env`, choose **Start AI Live Simulation**, and resolve one turn. The status sequence shows connection, four-character generation, validation, and World resolution. Provider failure remains visible; it never switches to deterministic policies.
 
-## Recovery path
+## Recovery
 
-- **Pause** always stops on a completed frozen boundary.
-- **Restart Live session** creates a fresh deterministic session.
-- A Live startup or resolution failure shows Retry and **Use Recorded Original**.
-- **Watch recorded demonstration** remains independently executable even if all Live scripts are unavailable.
+- **Pause** stops only after the current complete turn.
+- **Restart Live session** restores a new frozen Turn 0 session.
+- Provider setup, timeout, HTTP, and invalid-output failures offer Retry, Return to start, and Recorded Demo.
+- Recorded Demo remains independently executable even when AI Live is unavailable.

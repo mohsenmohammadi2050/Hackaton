@@ -37,6 +37,7 @@
       aiStatus: null,
       loading: false,
       error: null,
+      errorCode: null,
       composer: false,
       interventionCategory: "Information",
       compare: false,
@@ -57,6 +58,7 @@
       stopTimer();
       ui.loading = false;
       ui.error = error?.message || "Live simulation could not continue.";
+      ui.errorCode = error?.code || null;
       render();
       announce(`Live simulation error. ${ui.error}`);
     }
@@ -114,7 +116,8 @@
         return;
       }
       if (ui.error) {
-        app.innerHTML = `<section class="live-state-screen error-state" aria-labelledby="live-error-title"><span class="error-glyph" aria-hidden="true">!</span><p class="eyebrow">Frozen-boundary recovery</p><h1 id="live-error-title">${mode === "ai-live" ? "AI provider error" : "Simulation paused safely"}</h1><p>${escape(ui.error)}</p><div class="start-actions"><button class="button button-primary" data-action="retry-live" type="button">Retry ${mode === "ai-live" ? "AI Live" : "simulation"}</button><button class="button button-secondary" data-action="back-start" type="button">Return to start</button><button class="button button-tertiary" data-action="use-recorded" type="button">Explore Recorded Demo</button></div></section>`;
+        const errorTitle = mode !== "ai-live" ? "Simulation paused safely" : ui.errorCode === "INVALID_MODEL_RESPONSE" ? "Invalid model response" : "AI provider error";
+        app.innerHTML = `<section class="live-state-screen error-state" aria-labelledby="live-error-title"><span class="error-glyph" aria-hidden="true">!</span><p class="eyebrow">Frozen-boundary recovery</p><h1 id="live-error-title">${errorTitle}</h1><p>${escape(ui.error)}</p><div class="start-actions"><button class="button button-primary" data-action="retry-live" type="button">Retry ${mode === "ai-live" ? "AI Live" : "simulation"}</button><button class="button button-secondary" data-action="back-start" type="button">Return to start</button><button class="button button-tertiary" data-action="use-recorded" type="button">Explore Recorded Demo</button></div></section>`;
         return;
       }
       if (!adapter) return;
@@ -211,7 +214,8 @@
       const complete = branchComplete(ui.branch) && !awaitingIntervention && !capabilities.alternateCanRun;
       const forkable = ui.branch === "original" && !capabilities.hasAlternate && view.boundary.turn <= 10 && view.boundary.classification !== "post-intervention";
       const deterministicPreparation = !adapter.dynamic && capabilities.alternateCanRun && ui.branch === "alternate";
-      const status = awaitingIntervention ? "Awaiting exactly one typed intervention" : complete ? "Simulation complete" : ui.resolving ? `Resolving Turn ${frontier.boundary.turn + 1}…` : ui.running ? "Auto-running" : ui.aiStatus || `Ready at Turn ${frontier.boundary.turn}`;
+      const pausedStatus = typeof ui.aiStatus === "string" && ui.aiStatus.startsWith("Paused after Turn") ? ui.aiStatus : null;
+      const status = awaitingIntervention ? "Awaiting exactly one typed intervention" : complete ? "Simulation complete" : ui.resolving ? `Resolving Turn ${frontier.boundary.turn + 1}…` : ui.running ? "Auto-running" : pausedStatus || `Ready at Turn ${frontier.boundary.turn}`;
       const disabled = ui.running || ui.resolving || complete || awaitingIntervention || deterministicPreparation;
       return `<div class="playback-control"><div class="playback-status"><span>${view.branch.kind} · ${mode === "ai-live" ? "AI Live" : "deterministic"}</span><strong>${status}</strong><button class="follow-toggle" type="button" data-action="toggle-follow" aria-pressed="${ui.followLive}">Follow live events: ${ui.followLive ? "On" : "Off"}</button></div><div class="playback-buttons" role="group" aria-label="Simulation playback controls"><button class="button button-compact" title="Resolve one decision round and stop." data-action="live-step" ${disabled ? "disabled" : ""}>Next Turn →</button><button class="button button-compact button-run" title="Continue automatically until paused or completed." data-action="live-run" ${disabled ? "disabled" : ""}>Run to End ▶</button><button class="button button-compact button-pause" title="Stop after the current turn finishes." data-action="live-pause" ${ui.running ? "" : "disabled"}>Pause Ⅱ</button></div>${forkable ? `<button class="button button-fork" data-action="open-fork">Fork from turn ${view.boundary.turn} <span aria-hidden="true">⑂</span></button>` : ""}${deterministicPreparation ? `<button class="button button-primary button-resolve" data-action="resolve-alternate">Prepare Alternate future</button>` : ""}${canCompare() ? `<button class="button button-primary button-resolve" data-action="open-comparison">Compare outcomes</button>` : ""}</div>`;
     }
@@ -342,11 +346,11 @@
 
     function handleAction(control) {
       const action = control.dataset.action;
-      if (action === "retry-live") { ui.error = null; adapter = null; start(); return true; }
+      if (action === "retry-live") { ui.error = null; ui.errorCode = null; adapter = null; start(); return true; }
       if (action === "back-start") { stopTimer(); backToStart?.(); return true; }
       if (action === "use-recorded") { stopTimer(); useRecorded(); return true; }
       if (!adapter) return false;
-      if (action === "restart-live") { stopTimer(); adapter = null; Object.assign(ui, { branch: "original", frontiers: { original: 0, alternate: 0 }, selections: { original: null, alternate: null }, selection: { type: "event", id: null }, error: null, composer: false, compare: false }); start(); return true; }
+      if (action === "restart-live") { stopTimer(); adapter = null; Object.assign(ui, { branch: "original", frontiers: { original: 0, alternate: 0 }, selections: { original: null, alternate: null }, selection: { type: "event", id: null }, error: null, errorCode: null, composer: false, compare: false }); start(); return true; }
       if (action === "live-step") { step(); return true; }
       if (action === "live-run") { run(); return true; }
       if (action === "live-pause") { if (ui.resolving) ui.pauseRequested = true; else { stopTimer(); ui.aiStatus = `Paused after Turn ${frontierView().boundary.turn}`; render(); } announce(`Playback will pause after completed turn ${frontierView().boundary.turn}.`); return true; }

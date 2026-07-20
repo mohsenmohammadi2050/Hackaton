@@ -55,3 +55,16 @@ test("the competition helper is guarded by both explicit demo mode and the docum
   assert.match(source, /Available at turn \$\{demoConfig\?\.forkTurn\}/);
 });
 
+test("responsive workspace contains fork controls at 375px and preserves reduced-motion behavior", () => {
+  const css = read("styles.css");
+  assert.match(css, /@media \(max-width: 620px\)[\s\S]*\.workspace-topbar \{ overflow: hidden; \}/);
+  assert.match(css, /@media \(max-width: 620px\)[\s\S]*\.button-fork,[\s\S]*\.button-resolve \{ width: 100%; min-width: 0; flex: 0 0 auto; \}/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*animation-duration: 0\.01ms !important/);
+});
+
+test("AI status and failure labels are branch-local and distinguish invalid model output", () => {
+  const source = read("live-presentation.js");
+  assert.match(source, /ui\.errorCode === "INVALID_MODEL_RESPONSE" \? "Invalid model response" : "AI provider error"/);
+  assert.match(source, /pausedStatus \|\| `Ready at Turn \$\{frontier\.boundary\.turn\}`/);
+  assert.doesNotMatch(source, /ui\.aiStatus \|\| `Ready at Turn/);
+});

@@ -125,3 +125,28 @@ flowchart LR
 ```
 
 The UI never calls World, Decision, Provider, Intervention, Fork, or Integrity APIs directly. Recorded playback remains usable when the entire Live path is absent.
+
+## Phase 8.1 AI Live transport and authority
+
+```mermaid
+flowchart LR
+  UI["live-presentation.js"] --> SESSION["AI Live Session Adapter"]
+  SESSION --> AID["Async AI Decision Layer"]
+  AID -->|"4 parallel owned projections"| BROWSER_PROVIDER["Browser Provider Adapter"]
+  BROWSER_PROVIDER -->|"same-origin protocol request"| PROXY["Local Node Provider Proxy"]
+  PROXY -->|"OpenAI-compatible chat/completions"| MODEL["Configured GPT, Claude-compatible, or local provider"]
+  MODEL -->|"one JSON object per character"| PROXY
+  PROXY --> BROWSER_PROVIDER
+  BROWSER_PROVIDER --> AID
+  AID -->|"exactly 4 validated intents"| WORLD["Authoritative World Engine"]
+  WORLD --> SESSION
+  SESSION --> VM["Frozen narrative view model"]
+  VM --> UI
+
+  ENV[".env server secrets"] --> PROXY
+  ENV -. "never enters browser or timeline" .- UI
+  REC["Immutable Recorded Demo"] --> REC_UI["Recorded presentation"]
+  REC -. "independent" .- WORLD
+```
+
+The browser sends one character's allowlisted owned projection per request. Provider output remains non-authoritative until browser-side contract validation succeeds for all four characters and the World Engine resolves the turn. Any provider or validation failure leaves the last frozen completed boundary intact.

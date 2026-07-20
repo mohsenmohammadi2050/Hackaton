@@ -1,6 +1,22 @@
 # Forked Fates Project Structure
 
-**Snapshot:** Phase 8 final checkpoint (supersedes the Phase 7 tree retained below)
+**Snapshot:** Phase 8.1 D5 AI Live release
+
+## Phase 8.1 additions
+
+| Module | Purpose |
+|---|---|
+| `server.js` | Loopback static server and secure same-origin OpenAI-compatible provider proxy. |
+| `ai-live-provider.js` | Browser provider-protocol adapter; contains no key or provider URL. |
+| `ai-decision-layer.js` | Four parallel owned-state decisions, validation/retry, and atomic World handoff. |
+| `ai-live-session-adapter.js` | Incremental AI Original/Alternate lifecycle behind the presentation boundary. |
+| `fork-guidance.js` | Pure fork eligibility, remaining-turn, and opportunity presentation data. |
+| `assets/*.svg` | Local original portraits, locations, patient, and antidote artwork. |
+| `scripts/mock-openai-provider.js` | Local OpenAI-compatible verification fixture; never used as runtime fallback. |
+| `tests/ai-live.test.js` | Provider, privacy, retry, failure, and atomic-resolution coverage. |
+| `tests/comparison-truthfulness.test.js` | Decision/state difference and fork-horizon classification coverage. |
+| `tests/narrative-world.test.js` | Authoritative summary and local visual asset coverage. |
+| `tests/workspace-ux.test.js` | Scroll, playback, intervention, responsive, reduced-motion, and error-state coverage. |
 
 ## Phase 8 additions
 
@@ -61,7 +77,7 @@ F:\Hackaton
     └── timeline-fork-engine.test.js
 ```
 
-Generated dependency directories, build outputs, databases, and server components do not exist at this checkpoint.
+Generated dependency directories, build outputs, and databases do not exist. The only server is the dependency-free local Node proxy in `server.js`.
 
 ## Root production modules
 
@@ -78,7 +94,7 @@ Generated dependency directories, build outputs, databases, and server component
 | `npc-agents.js` | Four deterministic scenario-specific policies that each map an owned projection to one JSON intent. | None |
 | `intervention-layer.js` | Validates external intervention requests, creates frozen typed events, and delegates authoritative resolution. | `world-engine.js` |
 | `timeline-fork-engine.js` | Creates immutable Original/session wrappers, enforces one Alternate, requests authoritative cloning, applies Alternate intervention, continues autonomous turns, and presents branch-scoped intent/audit records. | `world-engine.js`, `decision-layer.js`, `intervention-layer.js` |
-| `package.json` | Project metadata plus syntax-check and 67-test commands. No runtime dependency packages are declared. | Node.js runtime |
+| `package.json` | Project metadata plus server, syntax-check, 134-test, demo-search, and mock-provider commands. No runtime dependency packages are declared. | Node.js runtime |
 | `AGENTS.md` | Active engineering invariants, phase discipline, and checkpoint naming rules. | Authoritative docs |
 
 ## Documentation
@@ -109,8 +125,14 @@ Generated dependency directories, build outputs, databases, and server component
 | `tests/provider-architecture.test.js` | 7 | Provider-only Decision dependency, DeterministicProvider parity, mock LLM contract, vendor-neutral configuration, and API-free failure behavior. |
 | `tests/intervention-engine.test.js` | 9 | Typed intervention categories, event-before-effect, decision divergence, retry, no-intervention parity, locality, and forged-request rejection. |
 | `tests/timeline-fork-engine.test.js` | 11 | Immutable Original, all-boundary cloning, generated branch identity, deep isolation, branch-specific identities, alternate-only intervention, deterministic alternate, World validity, and one-fork enforcement. |
+| `tests/causal-integrity.test.js` | 30 | Reference closure, exact source alignment, acyclic causes, temporal memory availability, intervention placement, boundaries, and outcome attribution. |
+| `tests/phase8-integration.test.js` | 10 | Presentation boundary, protected hashes, immutable demo, view models, fork, and comparison. |
+| `tests/ai-live.test.js` | 10 | AI transport, privacy, concurrency, retry, failure, and atomicity. |
+| `tests/comparison-truthfulness.test.js` | 6 | Intent/state difference classification and fork horizon. |
+| `tests/narrative-world.test.js` | 4 | Authoritative story summaries and local assets. |
+| `tests/workspace-ux.test.js` | 7 | Stable scroll, control language, intervention UX, responsive layout, and error labels. |
 
-**Total:** 67 tests.
+**Total:** 134 tests.
 
 ## Architecture review export
 

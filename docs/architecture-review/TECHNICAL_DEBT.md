@@ -1,9 +1,10 @@
 # Forked Fates Technical Debt Register
 
-**Snapshot:** `0635ad1`  
-**Assessment basis:** current 107-test Phase 8 MVP architecture
+**Snapshot:** Phase 8.1 D5 release
 
-> Phase 8 note: the former production-validator gap is closed by the versioned `timeline-integrity.js` validator introduced in Phase 7.1 and required before comparison. Remaining persistence/load validation work is covered by P0.2. Boundary classifications are now explicit (`initial`, `turn-close`, `post-intervention`), closing the former same-turn ambiguity item. The entries below otherwise remain applicable unless superseded by a note.
+**Assessment basis:** current 132-test-plus Phase 8.1 AI Live architecture
+
+> Phase 8.1 note: `timeline-integrity.js` and `branch-comparison.js` close the former reusable graph/comparison gaps. Boundary classifications are explicit. A secure local provider proxy, asynchronous four-character AI orchestration, timeouts, bounded retries, field allowlists, request-size limits, and visible failure now exist. They are a local demo boundary, not a production multi-tenant service.
 
 ## Priority definitions
 
@@ -31,25 +32,25 @@ No unresolved test failure or known corruption defect exists at this checkpoint.
 
 **Before production:** Choose a canonical versioned serialization, persist completed boundaries/events atomically, validate on load, define idempotency keys, and test crash/retry behavior.
 
-### P0.3 Real provider execution has no production contract
+### P0.3 Provider transport is local-demo grade, not production grade
 
-**Risk:** `LLMProvider` is intentionally an API-free synchronous adapter. There are no credentials, transport policy, timeouts, cancellation, rate limits, backoff, model-version pinning, response-size limits, token budgets, content controls, or vendor error mapping.
+**Risk:** Phase 8.1 adds server-side credentials, an OpenAI-compatible transport, timeout, bounded retry, request limits, redacted errors, response extraction, and strict browser-side intent validation. It does not add rate limiting, cancellation propagated from the UI, token/cost budgets, content moderation, provider-specific telemetry, durable model-version provenance, or a deployment secret manager.
 
-**Impact:** Connecting a remote model directly would block the synchronous turn loop and make availability, cost, privacy, and deterministic recovery undefined.
+**Impact:** The local proof is safe for one operator, but internet exposure could make availability, cost, abuse control, and auditability unacceptable.
 
-**Before production:** Add an asynchronous provider boundary with request deadlines, actor-scoped stateless contexts, explicit model/config versioning, redacted logging, bounded output, cancellation, and deterministic retry policy. Keep Decision and World contracts unchanged.
+**Before production:** Add authentication, rate/cost quotas, provider/model provenance, cancellation, bounded token/output policy, operational telemetry, and a managed secret store. Keep Decision and World contracts unchanged.
 
-### P0.4 Invariant validation exists primarily in tests
+### P0.4 World-state invariants beyond timeline graph closure remain test-heavy
 
-**Risk:** Tests validate four NPCs, three locations, antidote coherence, event uniqueness, memory provenance, owned belief support, boundary completeness, and outcomes. There is no reusable production validator for deserialized or externally sourced state.
+**Risk:** The reusable versioned Timeline Integrity validator covers reference closure, source alignment, boundary ordering, intervention placement, outcome support, and branch isolation. Broader scenario-shape and World-state invariants still rely heavily on constructors and tests, and there is no deserialization entry point yet.
 
 **Impact:** Corrupt persisted state or a migration defect could enter resolution and fail later with misleading domain errors.
 
 **Before production:** Promote invariant checks into a versioned validation module that runs at creation, load, fork, intervention, and optionally boundary commit.
 
-### P0.5 No service security or tenancy boundary
+### P0.5 No production service security or tenancy boundary
 
-**Risk:** The project is currently local/static and has no server. If exposed as a service, it has no authentication, authorization, tenant ownership, audit identity, request quotas, CSRF policy, secret handling, or signed event provenance. Human-readable intervention descriptions are typed and length-limited but not a complete content-security boundary.
+**Risk:** The local Node server binds to loopback, keeps provider secrets server-side, uses same-origin routes, validates methods/payloads, bounds request size, and sets browser security headers. It intentionally has no authentication, authorization, tenant ownership, audit identity, request quotas, CSRF token, or signed event provenance for remote deployment.
 
 **Impact:** Users could access or alter other sessions, exhaust provider/world resources, or inject untrusted content into future rendering/logging surfaces.
 
@@ -73,11 +74,9 @@ State cloning uses `JSON.parse(JSON.stringify(...))`. Every completed boundary s
 
 **Future direction:** Profile first, then consider canonical serialization, structural sharing, or an event-sourced materializer without weakening isolation.
 
-### P1.3 Same-turn boundary semantics are implicit
+### P1.3 Boundary semantics are explicit but not migration-tested
 
-An intervention appends a second boundary at the same turn; restoration chooses the latest matching boundary. Sequence numbers distinguish timeline boundary records, but the World schema has no explicit `boundaryKind` such as `turn-close` or `post-intervention`.
-
-**Risk:** Persistence, comparison, or tooling may accidentally select the pre-intervention snapshot or treat both as equivalent.
+`initial`, `turn-close`, and `post-intervention` are validated explicitly. No durable persistence format exists, so version migration and compatibility with future boundary kinds remain untested.
 
 ### P1.4 One-Alternate identity allocation does not generalize
 
@@ -91,9 +90,9 @@ The World resolver contains scenario-specific evidence and outcome rules. `npc-a
 
 **Risk:** A second scenario would either add conditionals to core modules or require a formal rule/plugin boundary. Generalization should not precede a concrete second scenario.
 
-### P1.6 Synchronous orchestration
+### P1.6 Mixed asynchronous and synchronous orchestration
 
-Decision, provider invocation, World resolution, replay, and full Alternate completion are synchronous. This simplifies deterministic tests but can block a browser or server event loop when inference or scenarios become expensive.
+AI provider invocation and four-character collection are asynchronous and parallel. World resolution remains deliberately synchronous and atomic. Deterministic Original construction and full Alternate preparation still replay synchronously in the browser; larger scenarios could block the main thread.
 
 ### P1.7 Output contract duplication
 
@@ -127,9 +126,9 @@ Provider requests contain only owned projections, but an injected provider imple
 
 **Before real providers:** Require stateless calls or actor-scoped contexts and test adapters for cross-NPC leakage.
 
-### P1.12 Synchronous Live initialization and Alternate completion
+### P1.12 Deterministic initialization and Alternate preparation remain synchronous
 
-The deterministic four-NPC, twelve-turn MVP completes quickly, but `createLiveSession()` and `completeAlternate()` resolve full timelines synchronously. A remote provider or larger scenario would block the browser main thread. Move orchestration to an asynchronous worker boundary before real provider transport; do not make World mutation asynchronous internally.
+The deterministic four-NPC, twelve-turn MVP completes quickly, but `createLiveSession()` and `completeAlternate()` resolve full timelines synchronously. A larger scenario would block the browser main thread. Move deterministic bulk replay to a worker boundary if profiling justifies it; do not make World mutation asynchronous internally.
 
 ### P2.4 Framework-free presentation concentration
 
@@ -161,9 +160,9 @@ The Recorded artifact and authoritative World evolution are independent by desig
 
 Provider Architecture was introduced as a post-Phase-4 checkpoint and later approved by the user as Phase 5. Its tag remains `phase-4-D2-provider-architecture`. The implementation sequence is clear in Git and the verification index, but automation must not infer phase solely from filenames or tag numbers.
 
-### P2.7 No reusable production comparison or invariant API
+### P2.7 Comparison explanations remain presentation-specific
 
-The Phase 7 tests contain useful branch-validity traversals. They are test helpers, not public modules. Phase 8 should avoid copying these rules into a third representation.
+Reusable integrity and structured comparison APIs now exist. Natural-language explanation remains deliberately small and presentation-specific; localization and explanation-schema versioning are not implemented.
 
 ## Scalability envelope
 
@@ -174,7 +173,7 @@ The Phase 7 tests contain useful branch-validity traversals. They are test helpe
 | Turns | Maximum 12 | Full boundary snapshots and repeated replay grow linearly with turns and state size. |
 | Critical items | One antidote | Inventory/possession rules are item-specific. |
 | Alternates | One | ID generation, storage, UI, and comparison are not multi-branch. |
-| Providers | Deterministic plus API-free adapter | Real latency, nondeterminism, privacy, and cost are unhandled. |
+| Providers | Deterministic plus one OpenAI-compatible local proxy | Multi-provider failover, cost controls, remote tenancy, and model provenance are unhandled. |
 | Scenarios | One | World and policy rule extraction has not been justified or designed. |
 | Persistence | None | No recovery, migration, distributed ownership, or long-term audit trail. |
 
