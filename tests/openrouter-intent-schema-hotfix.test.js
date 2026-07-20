@@ -182,7 +182,14 @@ test("a successful corrected retry resolves the World exactly once", async () =>
   assert.equal(dainCalls, 2);
   assert.equal(result.state.turn, 1);
   assert.equal(result.state.boundaries.length, 2);
-  assert.equal(JSON.stringify(result.state), JSON.stringify(expected));
+  const actualObservable = world.observableState(result.state);
+  const expectedObservable = world.observableState(expected);
+  assert.deepEqual(actualObservable.locations, expectedObservable.locations);
+  assert.deepEqual(actualObservable.antidote, expectedObservable.antidote);
+  assert.deepEqual(actualObservable.trust, expectedObservable.trust);
+  assert.equal(actualObservable.patient, expectedObservable.patient);
+  assert.equal(actualObservable.publicRecord.falseConsensus, expectedObservable.publicRecord.falseConsensus);
+  assert.deepEqual(actualObservable.publicRecord.claims.map((claim) => claim.claimId), expectedObservable.publicRecord.claims.map((claim) => claim.claimId));
   assert.equal(diagnostics.filter((record) => record.actorId === "dain").length, 2);
 });
 

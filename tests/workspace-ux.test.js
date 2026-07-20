@@ -64,7 +64,9 @@ test("responsive workspace contains fork controls at 375px and preserves reduced
 
 test("AI status and failure labels are branch-local and distinguish invalid model output", () => {
   const source = read("live-presentation.js");
-  assert.match(source, /ui\.errorCode === "INVALID_MODEL_RESPONSE" \? "Invalid model response" : "AI provider error"/);
+  assert.match(source, /WORLD_RESOLUTION_ERROR[\s\S]*World resolution error/);
+  assert.match(source, /INTENT_VALIDATION_ERROR[\s\S]*Intent validation error/);
+  assert.match(source, /AI_PROVIDER_ERROR[\s\S]*AI provider error/);
   assert.match(source, /pausedStatus \|\| `Ready at Turn \$\{frontier\.boundary\.turn\}`/);
   assert.doesNotMatch(source, /ui\.aiStatus \|\| `Ready at Turn/);
 });

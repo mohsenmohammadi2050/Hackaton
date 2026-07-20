@@ -14,6 +14,14 @@
     ["obs-dain-sera-sighting", "Dain saw Sera leave the Clinic"]
   ]);
 
+  function classifyLiveError(code, mode = "ai-live") {
+    if (mode !== "ai-live") return Object.freeze({ category: "PRESENTATION_ERROR", title: "Simulation paused safely", recovery: "The latest completed boundary remains safe." });
+    if (code === "WORLD_RESOLUTION_ERROR") return Object.freeze({ category: "WORLD_RESOLUTION_ERROR", title: "World resolution error", recovery: "The unresolved turn was not committed. Your latest completed boundary is safe, and retry will regenerate that turn." });
+    if (["malformed-output", "rejected-output", "INVALID_MODEL_RESPONSE", "INCOMPLETE_INTENT_SET"].includes(code)) return Object.freeze({ category: "INTENT_VALIDATION_ERROR", title: "Intent validation error", recovery: "At least one model response could not become a legal intent. No World events were committed." });
+    if (typeof code === "string" && (code.startsWith("AI_") || code === "AI_NOT_CONFIGURED")) return Object.freeze({ category: "AI_PROVIDER_ERROR", title: "AI provider error", recovery: "The provider request failed before authoritative World resolution." });
+    return Object.freeze({ category: "PRESENTATION_ERROR", title: "Presentation error", recovery: "The latest completed boundary remains safe." });
+  }
+
   function create(options) {
     const win = options.window;
     const doc = options.document;
@@ -120,8 +128,8 @@
         return;
       }
       if (ui.error) {
-        const errorTitle = mode !== "ai-live" ? "Simulation paused safely" : ui.errorCode === "INVALID_MODEL_RESPONSE" ? "Invalid model response" : "AI provider error";
-        app.innerHTML = `<section class="live-state-screen error-state" aria-labelledby="live-error-title"><span class="error-glyph" aria-hidden="true">!</span><p class="eyebrow">Frozen-boundary recovery</p><h1 id="live-error-title">${errorTitle}</h1><p>${escape(ui.error)}</p><div class="start-actions"><button class="button button-primary" data-action="retry-live" type="button">Retry ${mode === "ai-live" ? "AI Live" : "simulation"}</button><button class="button button-secondary" data-action="back-start" type="button">Return to start</button><button class="button button-tertiary" data-action="use-recorded" type="button">Explore Recorded Demo</button></div></section>`;
+        const classification = classifyLiveError(ui.errorCode, mode);
+        app.innerHTML = `<section class="live-state-screen error-state" aria-labelledby="live-error-title"><span class="error-glyph" aria-hidden="true">!</span><p class="eyebrow">Frozen-boundary recovery</p><h1 id="live-error-title">${classification.title}</h1><p>${escape(ui.error)}</p><p>${escape(classification.recovery)}</p><div class="start-actions"><button class="button button-primary" data-action="retry-live" type="button">Retry ${mode === "ai-live" ? "AI Live" : "simulation"}</button><button class="button button-secondary" data-action="back-start" type="button">Return to start</button><button class="button button-tertiary" data-action="use-recorded" type="button">Explore Recorded Demo</button></div></section>`;
         return;
       }
       if (!adapter) return;
@@ -350,7 +358,7 @@
 
     function handleAction(control) {
       const action = control.dataset.action;
-      if (action === "retry-live") { ui.error = null; ui.errorCode = null; adapter = null; start(); return true; }
+      if (action === "retry-live") { ui.error = null; ui.errorCode = null; if (adapter) { render(); step(); } else start(); return true; }
       if (action === "back-start") { stopTimer(); backToStart?.(); return true; }
       if (action === "use-recorded") { stopTimer(); useRecorded(); return true; }
       if (!adapter) return false;
@@ -378,5 +386,5 @@
     return Object.freeze({ start, render, handleAction });
   }
 
-  return Object.freeze({ create });
+  return Object.freeze({ classifyLiveError, create });
 });

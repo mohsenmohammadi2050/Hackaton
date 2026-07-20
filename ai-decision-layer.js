@@ -1,8 +1,8 @@
 (function initializeAiDecisionLayer(root, factory) {
   "use strict";
-  if (typeof module === "object" && module.exports) module.exports = factory(require("./world-engine"), require("./decision-layer"), require("./provider-intent-contract"));
-  else if (root) root.FORKED_FATES_AI_DECISION_LAYER = factory(root.FORKED_FATES_WORLD_ENGINE, root.FORKED_FATES_DECISION_LAYER, root.FORKED_FATES_PROVIDER_INTENT_CONTRACT);
-})(typeof globalThis !== "undefined" ? globalThis : this, function createAiDecisionLayer(world, decision, intentContract) {
+  if (typeof module === "object" && module.exports) module.exports = factory(require("./world-engine"), require("./decision-layer"), require("./provider-intent-contract"), require("./ai-owned-projection"));
+  else if (root) root.FORKED_FATES_AI_DECISION_LAYER = factory(root.FORKED_FATES_WORLD_ENGINE, root.FORKED_FATES_DECISION_LAYER, root.FORKED_FATES_PROVIDER_INTENT_CONTRACT, root.FORKED_FATES_AI_OWNED_PROJECTION);
+})(typeof globalThis !== "undefined" ? globalThis : this, function createAiDecisionLayer(world, decision, intentContract, ownedProjection) {
   "use strict";
 
   if (!world || !decision) throw new Error("AI Decision Layer requires the World and validated Decision layers.");
@@ -25,6 +25,19 @@
   function deepFreeze(value) {
     if (!value || typeof value !== "object" || Object.isFrozen(value)) return value;
     Object.freeze(value); Object.values(value).forEach(deepFreeze); return value;
+  }
+
+  function slug(value) {
+    return String(value || "intent").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "intent";
+  }
+
+  function stampSystemMetadata(candidate, boundary, actorId) {
+    const stamped = deepClone(candidate);
+    const semanticTarget = stamped.subject || stamped.targetLocationId || stamped.targetId || stamped.itemId || stamped.audience || "action";
+    stamped.id = `ai-t${String(boundary.turn + 1).padStart(2, "0")}-${slug(actorId)}-${slug(stamped.action)}-${slug(semanticTarget)}`;
+    stamped.actorId = actorId;
+    stamped.chosenAtTurn = boundary.turn;
+    return deepFreeze(stamped);
   }
 
   // Accepted compatibility alias: real models sometimes copy the plural legal-option key
@@ -56,18 +69,25 @@
     return `Validation error: ${error.message} Valid fields for ${action}: ${fields}. Minimal valid ${action} JSON: ${example}. Return only the corrected JSON object. Do not include previous invalid extra fields.`;
   }
 
-  function diagnosticRecord(actorId, attempt, candidate, error, aliases = []) {
+  function diagnosticRecord(projection, actorId, attempt, candidate, error, aliases = []) {
     return deepFreeze({
+      branchId: projection.branchId,
+      resolvingTurn: projection.turn + 1,
       actorId,
       attempt,
       selectedAction: typeof candidate?.action === "string" ? candidate.action : null,
+      semanticTarget: candidate?.subject || candidate?.targetLocationId || candidate?.targetId || candidate?.itemId || candidate?.audience || null,
+      servedGoalId: candidate?.servedGoalId || null,
+      citedMemoryIds: Array.isArray(candidate?.citedMemoryIds) ? candidate.citedMemoryIds.slice() : [],
+      previousAction: projection.previousAction ? { turn: projection.previousAction.turn, action: projection.previousAction.action, eventId: projection.previousAction.eventId } : null,
+      previousResult: projection.previousResult ? { status: projection.previousResult.status, category: projection.previousResult.category, eventId: projection.previousResult.eventId } : null,
       validationError: error?.message || null,
       normalizedResponse: candidate ? { fields: Object.keys(candidate).sort(), aliases: aliases.slice() } : { fields: [], aliases: [] }
     });
   }
 
   async function decideForActor(boundary, actorId, provider, maxAttempts, status, diagnostic) {
-    const projection = decision.createOwnedProjection(boundary, actorId);
+    const projection = ownedProjection.createAiOwnedProjection(boundary, actorId, decision.createOwnedProjection(boundary, actorId));
     const attempts = [];
     let feedback = null;
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -86,15 +106,15 @@
         status?.({ phase: "validating", actorId, attempt });
         candidate = decision.parseAgentOutput(raw, actorId);
         const canonical = canonicalizeCandidate(candidate, actorId);
-        candidate = canonical.candidate;
+        candidate = stampSystemMetadata(canonical.candidate, boundary, actorId);
         aliases = canonical.aliases;
         const intent = decision.validateCandidate(candidate, projection);
-        diagnostic?.(diagnosticRecord(actorId, attempt, candidate, null, aliases));
+        diagnostic?.(diagnosticRecord(projection, actorId, attempt, candidate, null, aliases));
         attempts.push({ attempt, status: "validated", intentId: intent.id, action: intent.action, canonicalizedAliases: aliases.slice() });
         return { actorId, projection, intent, attempts };
       } catch (error) {
         const code = error.code || error.kind || "INVALID_MODEL_RESPONSE";
-        diagnostic?.(diagnosticRecord(actorId, attempt, candidate, error, aliases));
+        diagnostic?.(diagnosticRecord(projection, actorId, attempt, candidate, error, aliases));
         feedback = buildRetryFeedback(error, candidate, projection);
         attempts.push({ attempt, status: code, message: error.message });
         if (code === "AI_STRUCTURED_OUTPUT_UNSUPPORTED" || attempt >= maxAttempts) throw new AiDecisionTurnError(code, `${actorId} did not produce a valid decision after ${attempt} attempt${attempt === 1 ? "" : "s"}: ${error.message}`, { actorId, attempts }, error);
@@ -121,11 +141,21 @@
     const intents = results.map((result) => result.intent);
     if (intents.length !== restored.npcOrder.length) throw new AiDecisionTurnError("INCOMPLETE_INTENT_SET", "World resolution requires exactly four validated intents.", audit);
     options.onStatus?.({ phase: "resolving", turn: restored.turn + 1 });
-    const state = world.resolveTurn(restored, intents);
+    let state;
+    try { state = world.resolveTurn(restored, intents); }
+    catch (error) {
+      audit.error = { code: "WORLD_RESOLUTION_ERROR", message: error.message };
+      throw new AiDecisionTurnError(
+        "WORLD_RESOLUTION_ERROR",
+        `Turn ${restored.turn + 1} was not committed because authoritative World resolution failed: ${error.message} Completed Turn ${restored.turn} remains safe.`,
+        deepFreeze(deepClone(audit)),
+        error
+      );
+    }
     audit.status = "completed";
     audit.acceptedIntentIds = intents.map((intent) => intent.id);
     return deepFreeze({ state, intents: deepClone(intents), audit: deepClone(audit), projections: results.map((result) => result.projection) });
   }
 
-  return Object.freeze({ OUTPUT_CONTRACT, AiDecisionTurnError, canonicalizeCandidate, buildRetryFeedback, diagnosticRecord, decideAndResolveTurn });
+  return Object.freeze({ OUTPUT_CONTRACT, AiDecisionTurnError, canonicalizeCandidate, stampSystemMetadata, buildRetryFeedback, diagnosticRecord, decideAndResolveTurn });
 });
