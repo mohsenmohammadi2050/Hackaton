@@ -197,37 +197,93 @@ function responseFormatFor(request, configuration) {
   };
 }
 
+function resolveChatCompletionsEndpoint(baseUrl) {
+  const normalized = String(baseUrl || "").replace(/\/+$/, "");
+  return /\/chat\/completions$/i.test(normalized) ? normalized : `${normalized}/chat/completions`;
+}
+
 function mapProviderRequest(request, configuration, feedback) {
   const providerType = resolveProviderType(configuration.providerType, configuration.baseUrl);
   const messages = providerMessages(request, feedback);
   const body = {
     model: configuration.model,
     messages,
-    response_format: responseFormatFor(request, configuration),
-    max_completion_tokens: configuration.maxOutputTokens || 800
+    response_format: responseFormatFor(request, configuration)
   };
   const headers = { "content-type": "application/json", accept: "application/json" };
   if (configuration.apiKey) headers.authorization = `Bearer ${configuration.apiKey}`;
 
   if (providerType === "openrouter") {
     body.temperature = 0.2;
+    body.max_tokens = configuration.maxOutputTokens || 800;
     if (configuration.reasoningEnabled) body.reasoning = { effort: configuration.reasoningEffort, exclude: true };
     body.provider = { require_parameters: true };
   } else if (providerType === "cerebras") {
+    body.max_completion_tokens = configuration.maxOutputTokens || 800;
     headers["X-Cerebras-Version-Patch"] = "2";
     if (configuration.reasoningEnabled) {
       body.reasoning_effort = configuration.reasoningEffort;
       body.reasoning_format = "hidden";
     }
+  } else {
+    body.max_tokens = configuration.maxOutputTokens || 800;
   }
 
   return Object.freeze({
     providerType,
     providerName: PROVIDER_NAMES[providerType],
-    endpoint: `${configuration.baseUrl}/chat/completions`,
+    endpoint: resolveChatCompletionsEndpoint(configuration.baseUrl),
     headers: Object.freeze(headers),
     body: Object.freeze(body),
     estimatedInputTokens: Math.ceil(Buffer.byteLength(JSON.stringify(messages), "utf8") / 4)
+  });
+}
+
+function redactDiagnosticText(value, configuration, messages) {
+  let safe = String(value ?? "");
+  if (configuration.apiKey) safe = safe.split(configuration.apiKey).join("[REDACTED_KEY]");
+  safe = safe.replace(/Bearer\s+[^\s"']+/gi, "Bearer [REDACTED]");
+  const promptValues = [];
+  const collectStrings = (candidate) => {
+    if (typeof candidate === "string") { if (candidate.length >= 4) promptValues.push(candidate); return; }
+    if (Array.isArray(candidate)) { for (const item of candidate) collectStrings(item); return; }
+    if (candidate && typeof candidate === "object") for (const item of Object.values(candidate)) collectStrings(item);
+  };
+  for (const message of messages || []) {
+    if (typeof message?.content !== "string" || !message.content) continue;
+    promptValues.push(message.content);
+    try { collectStrings(JSON.parse(message.content)); }
+    catch { promptValues.push(...(message.content.match(/[^.!?]+[.!?]?/g) || []).map((part) => part.trim()).filter((part) => part.length >= 12)); }
+  }
+  for (const promptValue of [...new Set(promptValues)].sort((left, right) => right.length - left.length)) safe = safe.split(promptValue).join("[REDACTED_PROMPT]");
+  if (/(?:ownedState|owned projection|scenarioKnowledge|private projection)/i.test(safe)) return "[REDACTED_PRIVATE_CONTENT]";
+  return safe.slice(0, 1000);
+}
+
+function safeProviderErrorResponse(raw, configuration, messages) {
+  const text = String(raw ?? "");
+  const summary = {
+    format: "non-json",
+    byteLength: Buffer.byteLength(text, "utf8"),
+    fingerprint: crypto.createHash("sha256").update(text).digest("hex")
+  };
+  let envelope;
+  try { envelope = JSON.parse(text); } catch { return Object.freeze(summary); }
+  const error = envelope && typeof envelope === "object" && !Array.isArray(envelope)
+    ? (envelope.error && typeof envelope.error === "object" && !Array.isArray(envelope.error) ? envelope.error : envelope)
+    : {};
+  const scalar = (value) => ["string", "number", "boolean"].includes(typeof value)
+    ? redactDiagnosticText(value, configuration, messages)
+    : null;
+  return Object.freeze({
+    ...summary,
+    format: "json",
+    error: Object.freeze({
+      code: scalar(error.code),
+      type: scalar(error.type),
+      message: scalar(error.message),
+      errorType: scalar(error.error_type ?? error.metadata?.error_type ?? envelope.error_type)
+    })
   });
 }
 
@@ -363,14 +419,15 @@ async function requestModelDecision(request, configuration, fetchImpl = globalTh
       const response = await fetchImpl(mapped.endpoint, { method: "POST", headers: mapped.headers, body: JSON.stringify(mapped.body), signal: controller.signal });
       const raw = await response.text();
       if (!response.ok) {
+        const providerResponse = safeProviderErrorResponse(raw, configuration, mapped.body.messages);
         if (response.status === 400 || response.status === 422) {
           const error = structuredOutputError(configuration);
-          writeDiagnostic(configuration, { provider: mapped.providerType, actorId: request.actorId, attempt: request.attempt, transportAttempt: attempt + 1, model: configuration.model, ...projectionMeta, ...reasoningDiagnostic(configuration, null, mapped.providerType), ...usageDiagnostic(null), latencyMs: Date.now() - startedAt, httpStatus: response.status, providerErrorCode: error.code, action: null, validationError: error.message });
+          writeDiagnostic(configuration, { provider: mapped.providerType, endpoint: mapped.endpoint, actorId: request.actorId, attempt: request.attempt, transportAttempt: attempt + 1, model: configuration.model, ...projectionMeta, ...reasoningDiagnostic(configuration, null, mapped.providerType), ...usageDiagnostic(null), latencyMs: Date.now() - startedAt, httpStatus: response.status, providerErrorCode: error.code, providerResponse, action: null, validationError: error.message });
           throw error;
         }
         const retryable = response.status === 408 || response.status === 429 || response.status >= 500;
         const error = Object.assign(new Error(`${mapped.providerName} returned HTTP ${response.status}.`), { code: "AI_HTTP_ERROR", status: 502, retryable });
-        writeDiagnostic(configuration, { provider: mapped.providerType, actorId: request.actorId, attempt: request.attempt, transportAttempt: attempt + 1, model: configuration.model, ...projectionMeta, ...reasoningDiagnostic(configuration, null, mapped.providerType), ...usageDiagnostic(null), latencyMs: Date.now() - startedAt, httpStatus: response.status, providerErrorCode: error.code, action: null, validationError: error.message });
+        writeDiagnostic(configuration, { provider: mapped.providerType, endpoint: mapped.endpoint, actorId: request.actorId, attempt: request.attempt, transportAttempt: attempt + 1, model: configuration.model, ...projectionMeta, ...reasoningDiagnostic(configuration, null, mapped.providerType), ...usageDiagnostic(null), latencyMs: Date.now() - startedAt, httpStatus: response.status, providerErrorCode: error.code, providerResponse, action: null, validationError: error.message });
         if (!retryable || attempt >= configuration.maxRetries) throw error;
         lastError = error;
         continue;
@@ -476,5 +533,6 @@ if (require.main === module) {
 module.exports = Object.freeze({
   MAX_REQUEST_BYTES, SUPPORTED_PROVIDER_TYPES, parseEnvFile, providerTypeFromUrl, resolveProviderType,
   loadConfiguration, configurationStatus, validateDecisionRequest, extractJsonObject, isOpenRouter,
-  responseFormatFor, mapProviderRequest, stableSerialize, projectionFingerprint, requestModelDecision, createAppServer
+  responseFormatFor, resolveChatCompletionsEndpoint, mapProviderRequest, safeProviderErrorResponse,
+  stableSerialize, projectionFingerprint, requestModelDecision, createAppServer
 });

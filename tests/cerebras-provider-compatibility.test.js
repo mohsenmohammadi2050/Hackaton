@@ -135,7 +135,7 @@ test("explicit provider selection overrides URL fallback while URL detection rem
   assert.equal(server.resolveProviderType(undefined, "https://provider.example/v1"), "generic-openai");
 });
 
-test("OpenRouter-specific mapping remains unchanged apart from the common output-token budget", () => {
+test("OpenRouter-specific mapping retains its normalized max_tokens output budget", () => {
   const providerRequest = request("dain");
   const mapped = server.mapProviderRequest(providerRequest, config({
     providerType: "openrouter", baseUrl: "https://openrouter.ai/api/v1", model: "provider/reasoning-model"
@@ -145,7 +145,8 @@ test("OpenRouter-specific mapping remains unchanged apart from the common output
   assert.deepEqual(mapped.body.reasoning, { effort: "medium", exclude: true });
   assert.deepEqual(mapped.body.provider, { require_parameters: true });
   assert.equal(mapped.body.response_format.type, "json_schema");
-  assert.equal(mapped.body.max_completion_tokens, 800);
+  assert.equal(mapped.body.max_tokens, 800);
+  assert.equal("max_completion_tokens" in mapped.body, false);
   assert.equal("reasoning_effort" in mapped.body, false);
   assert.equal("X-Cerebras-Version-Patch" in mapped.headers, false);
 });
@@ -154,7 +155,7 @@ test("generic OpenAI-compatible mapping stays conservative and refuses guessed r
   const providerRequest = request("sera");
   const generic = config({ providerType: "generic-openai", baseUrl: "https://provider.example/v1", apiKey: "", reasoningEnabled: false });
   const mapped = server.mapProviderRequest(providerRequest, generic, null);
-  assert.deepEqual(Object.keys(mapped.body).sort(), ["max_completion_tokens", "messages", "model", "response_format"]);
+  assert.deepEqual(Object.keys(mapped.body).sort(), ["max_tokens", "messages", "model", "response_format"]);
   assert.equal("provider" in mapped.body, false);
   assert.equal("reasoning" in mapped.body, false);
   assert.equal("reasoning_effort" in mapped.body, false);
