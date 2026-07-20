@@ -1,0 +1,42 @@
+﻿# Dependencies
+node_modules/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Test and coverage output
+coverage/
+.nyc_output/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+.cache/
+tmp/
+temp/
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# External review artifacts
+phase-7-1-validator-review.patch
+phase-8-full.patch
+phase-8-git-status.txt
+phase-8-git-log.txt
+phase-8-D2-demo-ready-product-external-review.zip
+
+# Local review screenshots
+phase-8-screenshots/
