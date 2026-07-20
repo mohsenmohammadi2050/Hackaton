@@ -16,8 +16,13 @@ coverage/
 *.tmp
 *.temp
 .cache/
+.eslintcache
 tmp/
 temp/
+*.bak
+*.orig
+*.swp
+*.swo
 
 # Editors and operating systems
 .vscode/
@@ -37,6 +42,11 @@ phase-8-full.patch
 phase-8-git-status.txt
 phase-8-git-log.txt
 phase-8-D2-demo-ready-product-external-review.zip
+phase-*-external-review.zip
+phase-*-full.patch
+phase-*-git-status.txt
+phase-*-git-log.txt
 
 # Local review screenshots
 phase-8-screenshots/
+phase-*-screenshots/
