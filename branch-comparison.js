@@ -7,7 +7,7 @@
   "use strict";
 
   if (!integrity) throw new Error("Branch Comparison requires Timeline Integrity validation.");
-  const COMPARISON_VERSION = "1.0.0";
+  const COMPARISON_VERSION = "1.1.0";
 
   function deepClone(value) { return JSON.parse(JSON.stringify(value)); }
   function deepFreeze(value) {
@@ -42,6 +42,12 @@
     copy.citedMemoryIds = (copy.citedMemoryIds || []).map((id) => memorySources.get(id) || id);
     return signature(copy);
   }
+  function eventStorySignature(event) {
+    const copy = deepClone(event);
+    ["id", "sourceId", "branchId", "order", "causes", "createdMemoryIds", "citedMemoryIds", "changes", "rationale"].forEach((key) => delete copy[key]);
+    if (copy.category === "Branch outcome") copy.description = String(copy.description).replace(/^(Original|Alternate) outcome:/, "Branch outcome:");
+    return signature(copy);
+  }
   function memorySourceMap(state) {
     const map = new Map();
     for (const npc of Object.values(state.npcs)) {
@@ -50,6 +56,44 @@
     return map;
   }
   function recordsByTurn(timeline) { return new Map(timeline.turns.map((record) => [record.turn, record])); }
+  function normalizedMemoryIds(intent, memorySources) {
+    return (intent?.citedMemoryIds || []).map((id) => memorySources.get(id) || id).slice().sort();
+  }
+  function normalizedContent(intent) {
+    if (!intent) return null;
+    return stable({
+      audience: intent.audience || null,
+      subject: intent.subject || null,
+      claimIds: (intent.claimIds || []).slice().sort(),
+      factIds: (intent.factIds || []).slice().sort(),
+      confessionFactIds: (intent.confessionFactIds || []).slice().sort()
+    });
+  }
+  function normalizedTarget(intent) {
+    if (!intent) return null;
+    return stable({ targetId: intent.targetId || null, targetLocationId: intent.targetLocationId || null, responsibilityTargetId: intent.responsibilityTargetId || null, itemId: intent.itemId || null });
+  }
+  function classifyIntentDifference(before, after, memorySources) {
+    if (!before || !after) return { classifications: ["action-changed"], label: "Action changed", evidence: { original: normalizedMemoryIds(before, new Map()), alternate: normalizedMemoryIds(after, memorySources) } };
+    const classifications = [];
+    if (before.action !== after.action) classifications.push("action-changed");
+    if (signature(normalizedTarget(before)) !== signature(normalizedTarget(after))) classifications.push("target-changed");
+    if (signature(normalizedContent(before)) !== signature(normalizedContent(after))) classifications.push("content-changed");
+    if (before.rationale !== after.rationale) classifications.push("rationale-changed");
+    if (before.servedGoalId !== after.servedGoalId) classifications.push("goal-changed");
+    const originalEvidence = normalizedMemoryIds(before, new Map());
+    const alternateEvidence = normalizedMemoryIds(after, memorySources);
+    const evidenceChanged = JSON.stringify(originalEvidence) !== JSON.stringify(alternateEvidence);
+    if (!classifications.length && evidenceChanged) classifications.push("evidence-changed-only");
+    if (!classifications.length) classifications.push("no-meaningful-decision-change");
+    const labels = {
+      "action-changed": "Action changed", "target-changed": "Target changed", "content-changed": "Content changed",
+      "rationale-changed": "Rationale changed", "goal-changed": "Goal changed",
+      "evidence-changed-only": "Same action, different evidence considered",
+      "no-meaningful-decision-change": "No meaningful decision change"
+    };
+    return { classifications, label: classifications.map((value) => labels[value]).join(" · "), evidence: { original: originalEvidence, alternate: alternateEvidence } };
+  }
   function changedIntents(original, alternate) {
     const originalTurns = recordsByTurn(original);
     const alternateTurns = recordsByTurn(alternate);
@@ -63,7 +107,8 @@
         const before = a?.intents.find((item) => item.actorId === actorId) || null;
         const after = b?.intents.find((item) => item.actorId === actorId) || null;
         if (!before || !after || intentSignature(before, new Map()) !== intentSignature(after, sourceMap)) {
-          changes.push({ turn, actorId, original: before && deepClone(before), alternate: after && deepClone(after) });
+          const classification = classifyIntentDifference(before, after, sourceMap);
+          changes.push({ turn, actorId, original: before && deepClone(before), alternate: after && deepClone(after), classifications: classification.classifications, label: classification.label, evidence: classification.evidence });
         }
       }
     }
@@ -87,7 +132,12 @@
       const afterEvents = alternateByTurn.get(turn) || [];
       const after = afterEvents.map((event) => eventSignature(event, sourceMap));
       if (JSON.stringify(before) !== JSON.stringify(after)) {
-        changes.push({ turn, originalEventIds: (originalByTurn.get(turn) || []).map((event) => event.id), alternateEventIds: afterEvents.map((event) => event.id) });
+        const originalEvents = originalByTurn.get(turn) || [];
+        const beforeStory = originalEvents.map(eventStorySignature);
+        const afterStory = afterEvents.filter((event) => !event.eventType?.startsWith("world.intervention.") && event.category !== "Memory and belief update").map(eventStorySignature);
+        const comparableBefore = originalEvents.filter((event) => event.category !== "Memory and belief update").map(eventStorySignature);
+        const meaningful = turn > alternate.forkTurn && JSON.stringify(comparableBefore) !== JSON.stringify(afterStory);
+        changes.push({ turn, meaningful, classification: meaningful ? "event-changed" : "evidence-or-reference-changed-only", originalEventIds: originalEvents.map((event) => event.id), alternateEventIds: afterEvents.map((event) => event.id) });
       }
     }
     return changes;
@@ -123,6 +173,27 @@
       if (JSON.stringify(before) !== JSON.stringify(after)) rows.push({ actorId, original: deepClone(before), alternate: deepClone(after) });
     }
     return rows;
+  }
+  function locationDelta(original, alternate) {
+    return Object.keys(original.state.npcs).filter((actorId) => original.state.npcs[actorId].locationId !== alternate.state.npcs[actorId].locationId)
+      .map((actorId) => ({ actorId, original: original.state.npcs[actorId].locationId, alternate: alternate.state.npcs[actorId].locationId }));
+  }
+  function memoryDelta(original, alternate) {
+    const rows = [];
+    for (const actorId of Object.keys(original.state.npcs)) {
+      const before = new Map(original.state.npcs[actorId].memories.map((memory) => [memory.id, memory]));
+      const mapped = alternate.state.npcs[actorId].memories.map((memory) => ({ source: memory.sourceId || memory.id, memory }));
+      const alternateSources = new Set(mapped.map((entry) => entry.source));
+      for (const entry of mapped) if (!before.has(entry.source)) rows.push({ actorId, kind: "added", memoryId: entry.memory.id, description: entry.memory.description });
+      for (const [id, memory] of before) if (!alternateSources.has(id)) rows.push({ actorId, kind: "missing", memoryId: id, description: memory.description });
+    }
+    return rows;
+  }
+  function outcomeDelta(original, alternate) {
+    const before = original.state.outcome;
+    const after = alternate.state.outcome;
+    if (!before || !after) return { terminal: Boolean(before) !== Boolean(after), medical: false, truth: false, social: false };
+    return { terminal: before.medical !== after.medical || before.truth !== after.truth || before.social !== after.social, medical: before.medical !== after.medical || before.treatmentTurn !== after.treatmentTurn, truth: before.truth !== after.truth, social: before.social !== after.social };
   }
   function pathEvents(timeline) {
     return timeline.state.events.filter((event) => {
@@ -163,14 +234,38 @@
     const alternate = session.alternate;
     const intents = changedIntents(original, alternate);
     const events = changedEvents(original, alternate);
-    const firstTurns = [intents[0]?.turn, events[0]?.turn].filter(Number.isInteger);
+    const meaningfulIntents = intents.filter((item) => !item.classifications.includes("evidence-changed-only") && !item.classifications.includes("no-meaningful-decision-change"));
+    const resultingEvents = events.filter((item) => item.turn > alternate.forkTurn && item.meaningful);
+    const firstTurns = [meaningfulIntents[0]?.turn, resultingEvents[0]?.turn].filter(Number.isInteger);
     const firstDivergenceTurn = firstTurns.length ? Math.min(...firstTurns) : null;
-    const comparisonLinks = intents.length && alternate.interventionEventId ? [{
+    const comparisonLinks = meaningfulIntents.length && alternate.interventionEventId ? [{
       from: alternate.interventionEventId,
-      to: intents[0].alternate?.id || `turn-${intents[0].turn}-${intents[0].actorId}`,
+      to: meaningfulIntents[0].alternate?.id || `turn-${meaningfulIntents[0].turn}-${meaningfulIntents[0].actorId}`,
       kind: "comparison-only",
       label: "The decision differs after the intervention; this is not asserted as an authoritative event-cause edge."
     }] : [];
+    const trust = trustDelta(original, alternate);
+    const beliefs = beliefDelta(original, alternate);
+    const inventories = inventoryDelta(original, alternate);
+    const locations = locationDelta(original, alternate);
+    const memories = memoryDelta(original, alternate);
+    const outcomes = outcomeDelta(original, alternate);
+    const antidoteChanged = signature(original.state.antidote) !== signature(alternate.state.antidote);
+    const visibleCategories = [];
+    if (meaningfulIntents.length) visibleCategories.push("decision-changed");
+    if (resultingEvents.length) visibleCategories.push("event-changed");
+    if (locations.length) visibleCategories.push("location-changed");
+    if (trust.length) visibleCategories.push("trust-changed");
+    if (inventories.length) visibleCategories.push("inventory-changed");
+    if (antidoteChanged) visibleCategories.push("antidote-path-changed");
+    if (outcomes.medical) visibleCategories.push("patient-treatment-state-changed");
+    if (outcomes.truth) visibleCategories.push("truth-outcome-changed");
+    if (outcomes.social) visibleCategories.push("social-outcome-changed");
+    if (outcomes.terminal) visibleCategories.push("terminal-outcome-changed");
+    const internalCategories = [];
+    if (beliefs.length) internalCategories.push("belief-changed");
+    if (memories.length) internalCategories.push("memory-changed");
+    if (intents.some((item) => item.classifications.includes("evidence-changed-only"))) internalCategories.push("evidence-changed-only");
     return deepFreeze({
       comparisonVersion: COMPARISON_VERSION,
       integritySchemaVersion: report.schemaVersion,
@@ -181,15 +276,27 @@
       changedEvents: events,
       outcomes: { original: deepClone(original.state.outcome), alternate: deepClone(alternate.state.outcome) },
       deltas: {
-        trust: trustDelta(original, alternate),
-        beliefs: beliefDelta(original, alternate),
-        inventories: inventoryDelta(original, alternate),
+        trust,
+        beliefs,
+        memories,
+        inventories,
+        locations,
         antidote: { original: deepClone(original.state.antidote), alternate: deepClone(alternate.state.antidote) }
+      },
+      outcomeDifferences: outcomes,
+      meaningfulDivergence: {
+        visible: visibleCategories.length > 0,
+        internalOnly: visibleCategories.length === 0 && internalCategories.length > 0,
+        score: meaningfulIntents.length * 5 + resultingEvents.length * 3 + trust.length * 2 + inventories.length * 3 + locations.length * 2 + visibleCategories.length * 4,
+        visibleCategories,
+        internalCategories,
+        message: visibleCategories.length ? `${visibleCategories.length} visible causal difference categor${visibleCategories.length === 1 ? "y" : "ies"}.` : "This intervention changed internal context but did not alter the visible story.",
+        suggestion: visibleCategories.length ? null : "Try an earlier turn or a different intervention."
       },
       antidotePaths: { original: pathEvents(original), alternate: pathEvents(alternate) },
       causalSupport: { original: causalSupport(original), alternate: causalSupport(alternate), comparisonLinks }
     });
   }
 
-  return Object.freeze({ COMPARISON_VERSION, compareTimelineSession });
+  return Object.freeze({ COMPARISON_VERSION, classifyIntentDifference, compareTimelineSession });
 });
