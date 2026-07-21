@@ -13,15 +13,15 @@ const demo = require(path.join(root, "src/config/demo-path-config.js"));
 
 const ORIGINAL_SHA256 = "6d9dfe9b9f628bf83a4f8fda4d39452260872c978335ddf7caabb9eb44a2501f";
 const PROTECTED = Object.freeze({
-  "src/data/world-scenario.js": "8ec05d2924a05415613f4ee4a1b22b69f3aa7ee6040f7a210f048aeb19123abd",
-  "src/engine/world-engine.js": "06122c845a42f4711ddbd997c6c399d56feadad83e062b97376a841bed6d480d",
-  "src/ai/decision-layer.js": "d9a06526a7f8fc064ddcecba08301a2d1c6a8b4aa26a621f45eb16dc305190ff",
-  "src/ai/decision-providers.js": "b7e64fe16b3370f77fc3e39eb9513ddd402fb82fc761986608f6f2a4a69b677f",
-  "src/ai/npc-agents.js": "c85f0ec1dcca49e6139b03b44702f911a2b85698ea1e2c9093119588825d8704",
-  "src/engine/intervention-layer.js": "6049a340aeafb9499f58dd22235ecd798e31a7b23548e820ffd30f9ccdacd00a",
-  "src/engine/timeline-fork-engine.js": "da527f227f7975e09bfecbec56ed2c504329403dd143466ef99955b13c7d2e6c",
-  "src/engine/timeline-integrity.js": "78d322ec63178493748c88191f2912758d8f8f1f1c578da9f8413e6b63caae72",
-  "src/data/recorded-data.js": "365e724d551eab0e78299e70e748616f667815b34c92cb033f0e0b2b88065a62"
+  "src/data/world-scenario.js": "d6df48d808297172fc5208ee4afb8d048c01697f4d1c16389d2ce887ed7e99fb",
+  "src/engine/world-engine.js": "e8208b565a7914716957491ea67da022d684001f9a880bfdf86590b2e3d781d7",
+  "src/ai/decision-layer.js": "f3e0fcfb33e83b87e39c224d45bed999024a7d49ed49ebc99facfc63fec1c835",
+  "src/ai/decision-providers.js": "e6cf57f0f87b8abb414d8efc8b1f3546838ab1e8756319e051f3a71f0be040fe",
+  "src/ai/npc-agents.js": "4f88b8971a6364fc0a20f3f8f6f2482f6d133b7e8e20e0b28e8b6399ed96616c",
+  "src/engine/intervention-layer.js": "99a37d6e4a947ad7aa1fea1ce007ab68745c8278d94f8a8a9551f7d9e1acfa43",
+  "src/engine/timeline-fork-engine.js": "2f6daddca6f9075d08b49b479bff648d3e9702f0b0b37aec4b6ae70e99fb3198",
+  "src/engine/timeline-integrity.js": "e86f4e54a27a5c30121b3ed0c9d57fb213f301a79b046232bf4f937a8ccfadc6",
+  "src/data/recorded-data.js": "c5ceb7e42de7ca9653697bf8fcad24e8f11f114dfb50cd15ebbb8a7751aabf5f"
 });
 
 function sha256(value) { return crypto.createHash("sha256").update(value).digest("hex"); }

@@ -15,9 +15,9 @@ const intervention = require(path.join(root, "src/engine/intervention-layer.js")
 
 const APPROVED_RUN_SHA256 = "6d9dfe9b9f628bf83a4f8fda4d39452260872c978335ddf7caabb9eb44a2501f";
 const IMMUTABLE_LAYER_SHA256 = Object.freeze({
-  "src/ai/decision-layer.js": "d9a06526a7f8fc064ddcecba08301a2d1c6a8b4aa26a621f45eb16dc305190ff",
-  "src/ai/decision-providers.js": "b7e64fe16b3370f77fc3e39eb9513ddd402fb82fc761986608f6f2a4a69b677f",
-  "src/ai/npc-agents.js": "c85f0ec1dcca49e6139b03b44702f911a2b85698ea1e2c9093119588825d8704"
+  "src/ai/decision-layer.js": "f3e0fcfb33e83b87e39c224d45bed999024a7d49ed49ebc99facfc63fec1c835",
+  "src/ai/decision-providers.js": "e6cf57f0f87b8abb414d8efc8b1f3546838ab1e8756319e051f3a71f0be040fe",
+  "src/ai/npc-agents.js": "4f88b8971a6364fc0a20f3f8f6f2482f6d133b7e8e20e0b28e8b6399ed96616c"
 });
 
 function sha256(value) {

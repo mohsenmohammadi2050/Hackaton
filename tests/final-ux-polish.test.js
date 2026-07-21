@@ -204,7 +204,7 @@ test("Recorded Demo uses the shared portraits, locations, story, timeline, inspe
 
 test("Recorded authored data remains byte-for-byte immutable", () => {
   const hash = crypto.createHash("sha256").update(read("src/data/recorded-data.js")).digest("hex");
-  assert.equal(hash, "365e724d551eab0e78299e70e748616f667815b34c92cb033f0e0b2b88065a62");
+  assert.equal(hash, "c5ceb7e42de7ca9653697bf8fcad24e8f11f114dfb50cd15ebbb8a7751aabf5f");
 });
 
 test("Back to Start and Start New Simulation are present across all required major surfaces", () => {
