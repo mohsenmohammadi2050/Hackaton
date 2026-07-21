@@ -4,9 +4,9 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const adapterApi = require("../live-session-adapter");
-const viewModels = require("../live-view-models");
-const presentation = require("../live-presentation");
+const adapterApi = require("../src/adapters/live-session-adapter");
+const viewModels = require("../src/presentation/live-view-models");
+const presentation = require("../src/presentation/live-presentation");
 
 const root = path.resolve(__dirname, "..");
 
@@ -97,7 +97,7 @@ test("Comparison repeats the intervention summary and identifies the first Turn 
 });
 
 test("Timeline and Comparison render the same complete intervention card before impact details", () => {
-  const source = fs.readFileSync(path.join(root, "live-presentation.js"), "utf8");
+  const source = fs.readFileSync(path.join(root, "src/presentation/live-presentation.js"), "utf8");
   const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
   for (const label of ["Target character", "Applied", "Memory or state created", "Applied turn"]) assert.match(source, new RegExp(label));
   assert.match(source, /boundary\.classification === "post-intervention" \? renderInterventionCard\(frontier\.intervention\)/);

@@ -6,11 +6,11 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
-const scenario = require("../world-scenario");
-const decision = require("../decision-layer");
-const providers = require("../decision-providers");
-const aiSessionApi = require("../ai-live-session-adapter");
-const presentation = require("../live-presentation");
+const scenario = require("../src/data/world-scenario");
+const decision = require("../src/ai/decision-layer");
+const providers = require("../src/ai/decision-providers");
+const aiSessionApi = require("../src/adapters/ai-live-session-adapter");
+const presentation = require("../src/presentation/live-presentation");
 
 const root = path.resolve(__dirname, "..");
 
@@ -106,7 +106,7 @@ test("invalid attempt primitives become a controlled presentation error without 
     title: "Presentation error",
     recovery: "The latest completed boundary remains safe."
   });
-  assert.doesNotMatch(fs.readFileSync(path.join(root, "live-presentation.js"), "utf8"), /error\.stack|stackTrace/);
+  assert.doesNotMatch(fs.readFileSync(path.join(root, "src/presentation/live-presentation.js"), "utf8"), /error\.stack|stackTrace/);
 });
 
 test("forking completed Turn 1 after Original Turn 3 preserves Original and scopes diagnostics", async () => {
@@ -144,15 +144,15 @@ test("intervention and Alternate continuation are branch-local and Original rema
 });
 
 test("a pre-commit presentation failure leaves no partial Alternate and one retry creates exactly one", () => {
-  const source = fs.readFileSync(path.join(root, "ai-live-session-adapter.js"), "utf8");
-  const realViews = require("../live-view-models");
+  const source = fs.readFileSync(path.join(root, "src/adapters/ai-live-session-adapter.js"), "utf8");
+  const realViews = require("../src/presentation/live-view-models");
   let failOnce = true;
   const moduleRecord = { exports: {} };
   const sandbox = {
     module: moduleRecord,
     exports: moduleRecord.exports,
     require(id) {
-      if (id === "./live-view-models") return {
+      if (id === "../presentation/live-view-models") return {
         createTimelineView(timeline, selector) {
           if (timeline.kind === "Alternate" && failOnce) {
             failOnce = false;
@@ -161,7 +161,7 @@ test("a pre-commit presentation failure leaves no partial Alternate and one retr
           return realViews.createTimelineView(timeline, selector);
         }
       };
-      return require(path.join(root, id));
+      return require(path.resolve(root, "src/adapters", id));
     },
     Object, Array, Map, Set, JSON, Error, TypeError, Number, String, Boolean, RegExp, Math
   };
@@ -263,7 +263,7 @@ test("complete AI Live Original-to-fork-to-Alternate comparison remains presenta
 });
 
 test("terminal and failed-action presentation expose all required user actions and explanations", () => {
-  const source = fs.readFileSync(path.join(root, "live-presentation.js"), "utf8");
+  const source = fs.readFileSync(path.join(root, "src/presentation/live-presentation.js"), "utf8");
   for (const phrase of [
     "Authoritative terminal outcome", "Inspect decisive event", "Fork an earlier turn", "Compare branches",
     "Back to Start", "Start New Simulation", "Valid decision, blocked by World conditions"

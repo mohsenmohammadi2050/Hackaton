@@ -4,7 +4,9 @@ const http = require("node:http");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
-const intentContract = require("./provider-intent-contract");
+const intentContract = require("../ai/provider-intent-contract");
+
+const PROJECT_ROOT = path.resolve(__dirname, "../..");
 
 const MAX_REQUEST_BYTES = 128 * 1024;
 const SUPPORTED_PROVIDER_TYPES = Object.freeze(["openrouter", "cerebras", "generic-openai"]);
@@ -54,7 +56,7 @@ function resolveProviderType(explicitType, baseUrl) {
   return requested;
 }
 
-function loadConfiguration(environment = process.env, rootDir = __dirname) {
+function loadConfiguration(environment = process.env, rootDir = PROJECT_ROOT) {
   const values = Object.assign({}, parseEnvFile(path.join(rootDir, ".env")), environment);
   const baseUrl = String(values.AI_PROVIDER_BASE_URL || "").replace(/\/$/, "");
   const timeoutMs = Number(values.AI_REQUEST_TIMEOUT_MS || 60000);
@@ -481,7 +483,7 @@ function readJson(request) {
 }
 
 function createAppServer(options = {}) {
-  const rootDir = path.resolve(options.rootDir || __dirname);
+  const rootDir = path.resolve(options.rootDir || PROJECT_ROOT);
   const configuration = options.configuration || loadConfiguration(options.environment || process.env, rootDir);
   const fetchImpl = options.fetchImpl || globalThis.fetch;
   const diagnosticTracker = new Map();

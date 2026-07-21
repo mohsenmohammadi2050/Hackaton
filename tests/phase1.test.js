@@ -15,7 +15,7 @@ function read(relativePath) {
 function loadRecordedData() {
   const context = { window: {} };
   vm.createContext(context);
-  vm.runInContext(read("recorded-data.js"), context, { filename: "recorded-data.js" });
+  vm.runInContext(read("src/data/recorded-data.js"), context, { filename: "recorded-data.js" });
   return context.window.FORKED_FATES_PHASE1;
 }
 
@@ -59,7 +59,7 @@ function createAppHarness(options = {}) {
   };
   const context = { document, window };
   vm.createContext(context);
-  vm.runInContext(read("app.js"), context, { filename: "app.js" });
+  vm.runInContext(read("src/presentation/app.js"), context, { filename: "app.js" });
 
   return {
     html() {
@@ -182,7 +182,7 @@ test("Consequential events expose the Phase 1 inspector contract", () => {
 });
 
 test("Information types and the Recorded mode are visibly distinguished", () => {
-  const appSource = read("app.js");
+  const appSource = read("src/presentation/app.js");
   assert.match(appSource, />World fact</);
   assert.match(appSource, />Claim</);
   assert.match(appSource, />Belief</);
@@ -193,7 +193,7 @@ test("Information types and the Recorded mode are visibly distinguished", () => 
 });
 
 test("Phase 1 navigation and inspection remain while later-phase controls stay excluded", () => {
-  const appSource = read("app.js");
+  const appSource = read("src/presentation/app.js");
   for (const action of [
     "open-briefing",
     "enter-world",
@@ -216,8 +216,8 @@ test("Phase 1 navigation and inspection remain while later-phase controls stay e
 test("The static entry point and responsive presentation are self-contained", () => {
   const html = read("index.html");
   const css = read("styles.css");
-  assert.match(html, /<script src="recorded-data\.js"><\/script>/);
-  assert.match(html, /<script src="app\.js"><\/script>/);
+  assert.match(html, /<script src="src\/data\/recorded-data\.js"><\/script>/);
+  assert.match(html, /<script src="src\/presentation\/app\.js"><\/script>/);
   assert.doesNotMatch(html, /https?:\/\//);
   assert.match(css, /@media \(max-width: 1180px\)/);
   assert.match(css, /@media \(max-width: 820px\)/);

@@ -2,10 +2,10 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const comparisonApi = require("../branch-comparison");
-const adapterApi = require("../live-session-adapter");
-const guidance = require("../fork-guidance");
-const demo = require("../demo-path-config");
+const comparisonApi = require("../src/presentation/branch-comparison");
+const adapterApi = require("../src/adapters/live-session-adapter");
+const guidance = require("../src/presentation/fork-guidance");
+const demo = require("../src/config/demo-path-config");
 
 function completeDemo() {
   const adapter = adapterApi.createLiveSession();

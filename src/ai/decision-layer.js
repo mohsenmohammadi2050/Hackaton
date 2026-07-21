@@ -1,7 +1,7 @@
 (function initializeDecisionLayer(root, factory) {
   "use strict";
 
-  if (typeof module === "object" && module.exports) module.exports = factory(require("./world-engine"));
+  if (typeof module === "object" && module.exports) module.exports = factory(require("../engine/world-engine"));
   else if (root) root.FORKED_FATES_DECISION_LAYER = factory(root.FORKED_FATES_WORLD_ENGINE);
 })(typeof globalThis !== "undefined" ? globalThis : this, function createDecisionLayer(engine) {
   "use strict";

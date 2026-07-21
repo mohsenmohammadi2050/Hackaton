@@ -1,6 +1,6 @@
 "use strict";
 
-const adapterApi = require("../live-session-adapter");
+const adapterApi = require("../src/adapters/live-session-adapter");
 
 const candidates = Object.freeze([
   { turn: 0, recipientId: "mara", propositionId: "fact-case-spare-key", confidence: 90 },

@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const adapterApi = require("../live-session-adapter");
+const adapterApi = require("../src/adapters/live-session-adapter");
 
 const root = path.resolve(__dirname, "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
@@ -37,7 +37,7 @@ test("All required narrative assets are local original SVG files", () => {
 });
 
 test("Presentation prioritizes story summary while keeping the technical inspector", () => {
-  const presentation = read("live-presentation.js");
+  const presentation = read("src/presentation/live-presentation.js");
   const css = read("styles.css");
   assert.match(presentation, /Latest authoritative story beat/);
   assert.match(presentation, /story-actions/);

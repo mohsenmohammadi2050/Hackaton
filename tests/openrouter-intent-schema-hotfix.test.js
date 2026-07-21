@@ -2,13 +2,13 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const scenario = require("../world-scenario");
-const world = require("../world-engine");
-const decision = require("../decision-layer");
-const intentContract = require("../provider-intent-contract");
-const providers = require("../decision-providers");
-const aiDecision = require("../ai-decision-layer");
-const server = require("../server");
+const scenario = require("../src/data/world-scenario");
+const world = require("../src/engine/world-engine");
+const decision = require("../src/ai/decision-layer");
+const intentContract = require("../src/ai/provider-intent-contract");
+const providers = require("../src/ai/decision-providers");
+const aiDecision = require("../src/ai/ai-decision-layer");
+const server = require("../src/server/server");
 
 function projection(actorId = "dain") {
   return decision.createOwnedProjection(world.createInitialWorld(scenario), actorId);

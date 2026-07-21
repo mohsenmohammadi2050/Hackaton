@@ -7,11 +7,11 @@ const test = require("node:test");
 const vm = require("node:vm");
 
 const root = path.resolve(__dirname, "..");
-const scenario = require(path.join(root, "world-scenario.js"));
-const engine = require(path.join(root, "world-engine.js"));
-const decision = require(path.join(root, "decision-layer.js"));
-const { createAutonomousAgents } = require(path.join(root, "npc-agents.js"));
-const { DeterministicProvider } = require(path.join(root, "decision-providers.js"));
+const scenario = require(path.join(root, "src/data/world-scenario.js"));
+const engine = require(path.join(root, "src/engine/world-engine.js"));
+const decision = require(path.join(root, "src/ai/decision-layer.js"));
+const { createAutonomousAgents } = require(path.join(root, "src/ai/npc-agents.js"));
+const { DeterministicProvider } = require(path.join(root, "src/ai/decision-providers.js"));
 
 function provider(agents) {
   return new DeterministicProvider(agents ? { agents } : {});
@@ -24,7 +24,7 @@ function read(relativePath) {
 function loadRecordedData() {
   const context = { window: {} };
   vm.createContext(context);
-  vm.runInContext(read("recorded-data.js"), context, { filename: "recorded-data.js" });
+  vm.runInContext(read("src/data/recorded-data.js"), context, { filename: "recorded-data.js" });
   return context.window.FORKED_FATES_PHASE1;
 }
 
@@ -57,18 +57,18 @@ function candidate(projection, actorId, action, details = {}) {
 }
 
 test("Decision Layer is isolated from Recorded and Presentation while depending on the World Engine only", () => {
-  const recorded = read("recorded-data.js");
-  const presentation = `${read("app.js")}\n${read("live-presentation.js")}\n${read("styles.css")}`;
-  const integration = read("live-session-adapter.js");
-  const world = `${read("world-scenario.js")}\n${read("world-engine.js")}`;
-  const agents = `${read("decision-layer.js")}\n${read("decision-providers.js")}\n${read("npc-agents.js")}`;
+  const recorded = read("src/data/recorded-data.js");
+  const presentation = `${read("src/presentation/app.js")}\n${read("src/presentation/live-presentation.js")}\n${read("styles.css")}`;
+  const integration = read("src/adapters/live-session-adapter.js");
+  const world = `${read("src/data/world-scenario.js")}\n${read("src/engine/world-engine.js")}`;
+  const agents = `${read("src/ai/decision-layer.js")}\n${read("src/ai/decision-providers.js")}\n${read("src/ai/npc-agents.js")}`;
 
   assert.doesNotMatch(recorded, /decision-layer|npc-agents|FORKED_FATES_DECISION/);
   assert.doesNotMatch(presentation, /decision-layer|npc-agents|FORKED_FATES_DECISION|world-engine|world-scenario|FORKED_FATES_WORLD/);
   assert.match(integration, /live-view-models|branch-comparison|timeline-fork-engine/);
   assert.doesNotMatch(world, /decision-layer|npc-agents|FORKED_FATES_DECISION/);
   assert.doesNotMatch(agents, /recorded-data|FORKED_FATES_PHASE1|innerHTML|document\.|renderWorkspace|originalIntents/);
-  assert.match(read("decision-layer.js"), /require\("\.\/world-engine"\)/);
+  assert.match(read("src/ai/decision-layer.js"), /require\("\.\.\/engine\/world-engine"\)/);
 });
 
 test("Owned-state projections expose only self state, public identities, local observations, and selected owned memories", () => {

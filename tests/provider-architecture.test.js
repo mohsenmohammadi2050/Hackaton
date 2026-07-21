@@ -7,16 +7,16 @@ const path = require("node:path");
 const test = require("node:test");
 
 const root = path.resolve(__dirname, "..");
-const scenario = require(path.join(root, "world-scenario.js"));
-const engine = require(path.join(root, "world-engine.js"));
-const decision = require(path.join(root, "decision-layer.js"));
-const providers = require(path.join(root, "decision-providers.js"));
+const scenario = require(path.join(root, "src/data/world-scenario.js"));
+const engine = require(path.join(root, "src/engine/world-engine.js"));
+const decision = require(path.join(root, "src/ai/decision-layer.js"));
+const providers = require(path.join(root, "src/ai/decision-providers.js"));
 
 const APPROVED_PHASE_7_1_RUN_SHA256 = "6d9dfe9b9f628bf83a4f8fda4d39452260872c978335ddf7caabb9eb44a2501f";
 const APPROVED_ARTIFACT_SHA256 = Object.freeze({
-  "npc-agents.js": "c85f0ec1dcca49e6139b03b44702f911a2b85698ea1e2c9093119588825d8704",
-  "world-scenario.js": "8ec05d2924a05415613f4ee4a1b22b69f3aa7ee6040f7a210f048aeb19123abd",
-  "recorded-data.js": "365e724d551eab0e78299e70e748616f667815b34c92cb033f0e0b2b88065a62"
+  "src/ai/npc-agents.js": "c85f0ec1dcca49e6139b03b44702f911a2b85698ea1e2c9093119588825d8704",
+  "src/data/world-scenario.js": "8ec05d2924a05415613f4ee4a1b22b69f3aa7ee6040f7a210f048aeb19123abd",
+  "src/data/recorded-data.js": "365e724d551eab0e78299e70e748616f667815b34c92cb033f0e0b2b88065a62"
 });
 
 function sha256(value) {
@@ -34,7 +34,7 @@ test("Approved policy, Recorded, and scenario artifacts remain byte-for-byte unc
 });
 
 test("Decision Layer depends on the provider protocol and never imports or addresses NPC policies", () => {
-  const source = fs.readFileSync(path.join(root, "decision-layer.js"), "utf8");
+  const source = fs.readFileSync(path.join(root, "src/ai/decision-layer.js"), "utf8");
   assert.match(source, /provider\.decide\(/);
   assert.doesNotMatch(source, /require\("\.\/npc-agents"\)|createAutonomousAgents|agents\s*\[|agent\.decide\(/);
   assert.throws(

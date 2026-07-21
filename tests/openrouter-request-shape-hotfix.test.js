@@ -2,12 +2,12 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const scenario = require("../world-scenario");
-const world = require("../world-engine");
-const decision = require("../decision-layer");
-const aiProjection = require("../ai-owned-projection");
-const aiDecision = require("../ai-decision-layer");
-const server = require("../server");
+const scenario = require("../src/data/world-scenario");
+const world = require("../src/engine/world-engine");
+const decision = require("../src/ai/decision-layer");
+const aiProjection = require("../src/ai/ai-owned-projection");
+const aiDecision = require("../src/ai/ai-decision-layer");
+const server = require("../src/server/server");
 
 function request(actorId = "mara") {
   const state = world.createInitialWorld(scenario);

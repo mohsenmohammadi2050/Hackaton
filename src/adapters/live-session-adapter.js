@@ -3,12 +3,12 @@
 
   if (typeof module === "object" && module.exports) {
     module.exports = factory(
-      require("./world-scenario"),
-      require("./decision-providers"),
-      require("./timeline-fork-engine"),
-      require("./timeline-integrity"),
-      require("./live-view-models"),
-      require("./branch-comparison")
+      require("../data/world-scenario"),
+      require("../ai/decision-providers"),
+      require("../engine/timeline-fork-engine"),
+      require("../engine/timeline-integrity"),
+      require("../presentation/live-view-models"),
+      require("../presentation/branch-comparison")
     );
   } else if (root) {
     root.FORKED_FATES_LIVE_SESSION_ADAPTER = factory(

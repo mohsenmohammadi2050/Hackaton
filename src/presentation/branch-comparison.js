@@ -1,7 +1,7 @@
 (function initializeBranchComparison(root, factory) {
   "use strict";
 
-  if (typeof module === "object" && module.exports) module.exports = factory(require("./timeline-integrity"), require("./live-view-models"));
+  if (typeof module === "object" && module.exports) module.exports = factory(require("../engine/timeline-integrity"), require("./live-view-models"));
   else if (root) root.FORKED_FATES_BRANCH_COMPARISON = factory(root.FORKED_FATES_TIMELINE_INTEGRITY, root.FORKED_FATES_LIVE_VIEW_MODELS);
 })(typeof globalThis !== "undefined" ? globalThis : this, function createBranchComparisonApi(integrity, viewModels) {
   "use strict";

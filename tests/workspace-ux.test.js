@@ -17,7 +17,7 @@ test("desktop workspace stays in one viewport with independent narrative, timeli
 });
 
 test("turn resolution restores document position while follow-live scrolling stays local and optional", () => {
-  const source = read("live-presentation.js");
+  const source = read("src/presentation/live-presentation.js");
   assert.doesNotMatch(source, /scrollIntoView/);
   assert.match(source, /captureScrollState/);
   assert.match(source, /win\.scrollTo\(snapshot\.pageX, snapshot\.pageY\)/);
@@ -30,8 +30,8 @@ test("turn resolution restores document position while follow-live scrolling sta
 });
 
 test("Recorded and Live playback controls use the same plain-language labels and exact tooltips", () => {
-  const recorded = read("app.js");
-  const live = read("live-presentation.js");
+  const recorded = read("src/presentation/app.js");
+  const live = read("src/presentation/live-presentation.js");
   for (const source of [recorded, live]) {
     assert.match(source, /Next Turn/);
     assert.match(source, /Run to End/);
@@ -43,7 +43,7 @@ test("Recorded and Live playback controls use the same plain-language labels and
 });
 
 test("the normal intervention composer explains effects without exposing a canned demo shortcut", () => {
-  const source = read("live-presentation.js");
+  const source = read("src/presentation/live-presentation.js");
   assert.match(source, /Private evidence gives only the selected recipient/);
   assert.match(source, /A real item can move only between valid co-located participants/);
   assert.match(source, /A supported condition becomes observable at one location/);
@@ -53,7 +53,7 @@ test("the normal intervention composer explains effects without exposing a canne
 });
 
 test("the competition helper is guarded by both explicit demo mode and the documented fork turn", () => {
-  const source = read("live-presentation.js");
+  const source = read("src/presentation/live-presentation.js");
   assert.match(source, /action === "apply-demo-intervention" && showDemoTools && selectedView\(\)\.boundary\.turn === demoConfig\?\.forkTurn/);
   assert.match(source, /Available at turn \$\{demoConfig\?\.forkTurn\}/);
 });
@@ -66,7 +66,7 @@ test("responsive workspace contains fork controls at 375px and preserves reduced
 });
 
 test("AI status and failure labels are branch-local and distinguish invalid model output", () => {
-  const source = read("live-presentation.js");
+  const source = read("src/presentation/live-presentation.js");
   assert.match(source, /WORLD_RESOLUTION_ERROR[\s\S]*World resolution error/);
   assert.match(source, /INTENT_VALIDATION_ERROR[\s\S]*Intent validation error/);
   assert.match(source, /AI_PROVIDER_ERROR[\s\S]*AI provider error/);

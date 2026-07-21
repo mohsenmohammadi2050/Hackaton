@@ -4,14 +4,14 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const scenario = require("../world-scenario");
-const world = require("../world-engine");
-const decision = require("../decision-layer");
-const providers = require("../decision-providers");
-const aiProjection = require("../ai-owned-projection");
-const aiDecision = require("../ai-decision-layer");
-const server = require("../server");
-const browserProvider = require("../ai-live-provider");
+const scenario = require("../src/data/world-scenario");
+const world = require("../src/engine/world-engine");
+const decision = require("../src/ai/decision-layer");
+const providers = require("../src/ai/decision-providers");
+const aiProjection = require("../src/ai/ai-owned-projection");
+const aiDecision = require("../src/ai/ai-decision-layer");
+const server = require("../src/server/server");
+const browserProvider = require("../src/ai/ai-live-provider");
 
 const root = path.resolve(__dirname, "..");
 
@@ -265,17 +265,21 @@ test("browser configuration preserves safe provider identity for the AI Live UI"
   assert.equal(configuration.displayName, "Cerebras · gpt-oss-120b");
   assert.equal(configuration.providerType, "cerebras");
   assert.equal(configuration.maxOutputTokens, 800);
-  assert.match(fs.readFileSync(path.join(root, "live-presentation.js"), "utf8"), /configuration\.displayName[\s\S]*ui\.providerLabel/);
+  assert.match(fs.readFileSync(path.join(root, "src/presentation/live-presentation.js"), "utf8"), /configuration\.displayName[\s\S]*ui\.providerLabel/);
 });
 
-test("environment example and README define Cerebras as primary without a real key or Groq patch", () => {
+test("environment example and README present OpenRouter as primary while Cerebras remains optional", () => {
   const example = fs.readFileSync(path.join(root, ".env.example"), "utf8");
   const readme = fs.readFileSync(path.join(root, "README.md"), "utf8");
   for (const line of [
-    "AI_PROVIDER_TYPE=cerebras", "AI_PROVIDER_BASE_URL=https://api.cerebras.ai/v1", "AI_MODEL=gpt-oss-120b",
+    "AI_PROVIDER_TYPE=openrouter", "AI_PROVIDER_BASE_URL=https://openrouter.ai/api/v1", "AI_MODEL=google/gemma-4-26b-a4b-it",
     "AI_MAX_OUTPUT_TOKENS=800", "AI_INPUT_TOKEN_WARNING=6000"
   ]) assert.match(example, new RegExp(line.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  assert.match(example, /AI_PROVIDER_API_KEY=\s*(?:\r?\n)/);
-  assert.doesNotMatch(example + readme, /AI_PROVIDER_TYPE=groq|api\.groq\.com|openai\/gpt-oss-20b/);
-  assert.match(readme, /64K tokens per minute[\s\S]*30 requests per minute[\s\S]*console are authoritative/);
+  assert.match(readme, /successful AI Live configuration used OpenRouter[\s\S]*AI_PROVIDER_TYPE=openrouter[\s\S]*AI_MODEL=google\/gemma-4-26b-a4b-it/);
+  const apiKey = example.match(/^AI_PROVIDER_API_KEY=(.*)$/m)?.[1].trim();
+  assert.ok(apiKey === "" || /^your[_-].*key/i.test(apiKey), "The example must contain only an empty value or an obvious API-key placeholder.");
+  assert.doesNotMatch(`${example}\n${readme}`, /sk-or-v1-[A-Za-z0-9_-]+|csk-[A-Za-z0-9_-]+/);
+  assert.match(readme, /Cerebras remains available as an optional compatible provider/);
+  assert.doesNotMatch(readme, /primary acceptance configuration is Cerebras|final acceptance environment[^\n]*Cerebras/);
+  assert.ok(server.SUPPORTED_PROVIDER_TYPES.includes("cerebras"));
 });

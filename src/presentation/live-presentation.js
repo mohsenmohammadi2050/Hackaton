@@ -1,7 +1,7 @@
 (function initializeLivePresentation(root, factory) {
   "use strict";
 
-  if (typeof module === "object" && module.exports) module.exports = factory(require("./live-session-adapter"), require("./demo-path-config"));
+  if (typeof module === "object" && module.exports) module.exports = factory(require("../adapters/live-session-adapter"), require("../config/demo-path-config"));
   else if (root) root.FORKED_FATES_LIVE_PRESENTATION = factory(root.FORKED_FATES_LIVE_SESSION_ADAPTER, root.FORKED_FATES_DEMO_PATH);
 })(typeof globalThis !== "undefined" ? globalThis : this, function createLivePresentationApi(adapterApi, demoConfig) {
   "use strict";

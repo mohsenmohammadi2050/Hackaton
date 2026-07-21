@@ -8,9 +8,9 @@ const test = require("node:test");
 
 const root = path.resolve(__dirname, "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
-const presentationApi = require("../live-presentation");
-const adapterApi = require("../live-session-adapter");
-const demo = require("../demo-path-config");
+const presentationApi = require("../src/presentation/live-presentation");
+const adapterApi = require("../src/adapters/live-session-adapter");
+const demo = require("../src/config/demo-path-config");
 
 function completedDemoAdapter() {
   const adapter = adapterApi.createLiveSession();
@@ -174,14 +174,14 @@ test("Jump to latest restores the latest completed turn and Follow mode", async 
 
 test("timeline scrolling is internal and no inspector action uses scrollIntoView", () => {
   const css = read("styles.css");
-  const source = `${read("app.js")}\n${read("live-presentation.js")}`;
+  const source = `${read("src/presentation/app.js")}\n${read("src/presentation/live-presentation.js")}`;
   assert.match(css, /\.timeline[\s\S]*overflow-y: auto;[\s\S]*overscroll-behavior: contain/);
   assert.match(source, /restoreScrollState|restorePresentationScroll/);
   assert.doesNotMatch(source, /scrollIntoView/);
 });
 
 test("start page presents exactly two primary product choices", () => {
-  const source = read("app.js");
+  const source = read("src/presentation/app.js");
   assert.match(source, /start-primary-choices/);
   assert.equal((source.match(/class="button [^"]*mode-choice"/g) || []).length, 2);
   assert.match(source, />Start AI Live</);
@@ -189,13 +189,13 @@ test("start page presents exactly two primary product choices", () => {
 });
 
 test("Deterministic Simulation remains available under Advanced Testing Modes", () => {
-  const source = read("app.js");
+  const source = read("src/presentation/app.js");
   assert.match(source, /<details class="advanced-modes">[\s\S]*Advanced \/ Testing Modes[\s\S]*data-mode="deterministic"/);
   assert.match(source, /testing and reproducibility/);
 });
 
 test("Recorded Demo uses the shared portraits, locations, story, timeline, inspector, and terminal shell", () => {
-  const source = read("app.js");
+  const source = read("src/presentation/app.js");
   for (const marker of ["portrait-image", "location-illustration", "story-beat", "world-map", "timeline", "inspector-scroll", "terminal-completion"]) {
     assert.match(source, new RegExp(marker));
   }
@@ -203,13 +203,13 @@ test("Recorded Demo uses the shared portraits, locations, story, timeline, inspe
 });
 
 test("Recorded authored data remains byte-for-byte immutable", () => {
-  const hash = crypto.createHash("sha256").update(read("recorded-data.js")).digest("hex");
+  const hash = crypto.createHash("sha256").update(read("src/data/recorded-data.js")).digest("hex");
   assert.equal(hash, "365e724d551eab0e78299e70e748616f667815b34c92cb033f0e0b2b88065a62");
 });
 
 test("Back to Start and Start New Simulation are present across all required major surfaces", () => {
-  const app = read("app.js");
-  const live = read("live-presentation.js");
+  const app = read("src/presentation/app.js");
+  const live = read("src/presentation/live-presentation.js");
   assert.match(app, /briefing-header[\s\S]*Back to Start/);
   assert.match(app, /brand-lockup brand-home[\s\S]*data-action="back-start"/);
   assert.doesNotMatch(app, /workspace-nav-actions"><button class="text-button"[^>]*data-action="back-start"/);

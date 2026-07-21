@@ -1,6 +1,6 @@
 (function initializeAiDecisionLayer(root, factory) {
   "use strict";
-  if (typeof module === "object" && module.exports) module.exports = factory(require("./world-engine"), require("./decision-layer"), require("./provider-intent-contract"), require("./ai-owned-projection"));
+  if (typeof module === "object" && module.exports) module.exports = factory(require("../engine/world-engine"), require("./decision-layer"), require("./provider-intent-contract"), require("./ai-owned-projection"));
   else if (root) root.FORKED_FATES_AI_DECISION_LAYER = factory(root.FORKED_FATES_WORLD_ENGINE, root.FORKED_FATES_DECISION_LAYER, root.FORKED_FATES_PROVIDER_INTENT_CONTRACT, root.FORKED_FATES_AI_OWNED_PROJECTION);
 })(typeof globalThis !== "undefined" ? globalThis : this, function createAiDecisionLayer(world, decision, intentContract, ownedProjection) {
   "use strict";

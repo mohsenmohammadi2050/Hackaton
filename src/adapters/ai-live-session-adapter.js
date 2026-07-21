@@ -1,7 +1,7 @@
 (function initializeAiLiveSessionAdapter(root, factory) {
   "use strict";
   if (typeof module === "object" && module.exports) {
-    module.exports = factory(require("./world-scenario"), require("./world-engine"), require("./ai-decision-layer"), require("./timeline-fork-engine"), require("./timeline-integrity"), require("./live-view-models"), require("./branch-comparison"));
+    module.exports = factory(require("../data/world-scenario"), require("../engine/world-engine"), require("../ai/ai-decision-layer"), require("../engine/timeline-fork-engine"), require("../engine/timeline-integrity"), require("../presentation/live-view-models"), require("../presentation/branch-comparison"));
   } else if (root) {
     root.FORKED_FATES_AI_LIVE_SESSION_ADAPTER = factory(root.FORKED_FATES_WORLD_SCENARIO, root.FORKED_FATES_WORLD_ENGINE, root.FORKED_FATES_AI_DECISION_LAYER, root.FORKED_FATES_TIMELINE_FORK_ENGINE, root.FORKED_FATES_TIMELINE_INTEGRITY, root.FORKED_FATES_LIVE_VIEW_MODELS, root.FORKED_FATES_BRANCH_COMPARISON);
   }

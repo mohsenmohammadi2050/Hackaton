@@ -2,7 +2,7 @@
   "use strict";
 
   if (typeof module === "object" && module.exports) {
-    module.exports = factory(require("./world-engine"), require("./decision-layer"), require("./intervention-layer"));
+    module.exports = factory(require("./world-engine"), require("../ai/decision-layer"), require("./intervention-layer"));
   } else if (root) {
     root.FORKED_FATES_TIMELINE_FORK_ENGINE = factory(
       root.FORKED_FATES_WORLD_ENGINE,

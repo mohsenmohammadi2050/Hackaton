@@ -2,16 +2,16 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const scenario = require("../world-scenario");
-const world = require("../world-engine");
-const decision = require("../decision-layer");
-const providers = require("../decision-providers");
-const aiOwned = require("../ai-owned-projection");
-const aiDecision = require("../ai-decision-layer");
-const aiSessionApi = require("../ai-live-session-adapter");
-const server = require("../server");
-const presentation = require("../live-presentation");
-const demo = require("../demo-path-config");
+const scenario = require("../src/data/world-scenario");
+const world = require("../src/engine/world-engine");
+const decision = require("../src/ai/decision-layer");
+const providers = require("../src/ai/decision-providers");
+const aiOwned = require("../src/ai/ai-owned-projection");
+const aiDecision = require("../src/ai/ai-decision-layer");
+const aiSessionApi = require("../src/adapters/ai-live-session-adapter");
+const server = require("../src/server/server");
+const presentation = require("../src/presentation/live-presentation");
+const demo = require("../src/config/demo-path-config");
 
 function deepClone(value) { return JSON.parse(JSON.stringify(value)); }
 function deepFreeze(value) { if (!value || typeof value !== "object" || Object.isFrozen(value)) return value; Object.freeze(value); Object.values(value).forEach(deepFreeze); return value; }
