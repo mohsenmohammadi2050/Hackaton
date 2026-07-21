@@ -63,6 +63,7 @@
     const keyBelief = belief(projection, "fact-case-spare-key");
     const deniedResponsibility = believes(projection, "claim-mara-not-responsible");
     const questionedOrin = hasClaimMemory(projection, "claim-mara-questions-orin-key", true);
+    const recalledKey = hasFactMemory(projection, "fact-case-spare-key");
     const publishedKey = hasFactMemory(projection, "fact-case-spare-key", "public");
 
     if (location === "clinic" && (!keyBelief || keyBelief.confidence < 90)) {
@@ -89,7 +90,7 @@
           (memory) => memory.claimIds.includes("claim-mara-responsible")
         ]));
     }
-    if (location === "square" && !publishedKey) {
+    if (location === "square" && recalledKey && !publishedKey) {
       return output(projection, "Communicate", "publish-key-evidence", "primary",
         "Publishing Mara's verified spare-key evidence can redirect the search toward the missing antidote.",
         { audience: "public", factIds: ["fact-case-spare-key"] },
