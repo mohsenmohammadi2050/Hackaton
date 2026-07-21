@@ -7,7 +7,7 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function createLiveViewModelsApi() {
   "use strict";
 
-  const VIEW_MODEL_VERSION = "1.0.0";
+  const VIEW_MODEL_VERSION = "1.1.0";
   const LOCATION_DESCRIPTIONS = Object.freeze({
     clinic: "Niko waits beneath the deadline clock.",
     square: "Public claims and accusations gather here.",
@@ -127,6 +127,57 @@
     };
   }
 
+  function displayIdentity(world, id) {
+    if (id === "antidote") return "Antidote";
+    return world.npcs[id]?.name || world.locations[id]?.name || id || "Unknown";
+  }
+
+  function createInterventionSummary(timeline) {
+    if (!timeline?.interventionEventId || !timeline.state) return null;
+    const world = timeline.state;
+    const event = world.events.find((candidate) => candidate.id === timeline.interventionEventId);
+    if (!event) return null;
+    const eventType = event.eventType || "";
+    const memory = Object.values(world.npcs).flatMap((npc) => npc.memories).find((candidate) => candidate.originEventId === event.id) || null;
+    let type = "Intervention";
+    let targetCharacter = "No direct character target";
+    let appliedDetail = event.description;
+    let createdEffect = memory ? `Memory created for ${displayIdentity(world, memory.ownerId)}: ${memory.description}` : "Authoritative event recorded.";
+
+    if (eventType.includes(".information.")) {
+      type = "Information";
+      const recipientId = event.targetIds[0];
+      targetCharacter = displayIdentity(world, recipientId);
+      appliedDetail = event.description;
+    } else if (eventType.includes(".item-transfer.")) {
+      type = "Item transfer";
+      const itemChange = event.changes?.items?.[0] || {};
+      targetCharacter = displayIdentity(world, itemChange.to || event.targetIds[1]);
+      appliedDetail = `${displayIdentity(world, itemChange.itemId || event.targetIds[2])} transferred from ${displayIdentity(world, itemChange.from || event.targetIds[0])} to ${targetCharacter}. ${event.description}`;
+      createdEffect = `${displayIdentity(world, itemChange.itemId || event.targetIds[2])} holder became ${targetCharacter}.`;
+    } else if (eventType.includes(".environmental-event.")) {
+      type = "Environmental event";
+      const locationChange = event.changes?.locations?.[0] || {};
+      const locationName = displayIdentity(world, locationChange.locationId || event.locationId);
+      const conditionId = locationChange.conditionId || event.targetIds[1];
+      const conditionName = String(conditionId || "Environmental condition").replace(/^condition-/, "").replace(/-/g, " ").replace(/^./, (character) => character.toUpperCase());
+      const witnesses = (event.witnessIds || []).filter((id) => world.npcs[id]).map((id) => displayIdentity(world, id));
+      targetCharacter = witnesses.length ? witnesses.join(", ") : "No direct character target";
+      appliedDetail = `${conditionName} became ${locationChange.to || "active"} at ${locationName}. ${event.description}`;
+      createdEffect = `${conditionName} is ${locationChange.to || "active"} at ${locationName}.`;
+    }
+
+    return deepFreeze({
+      eventId: event.id,
+      type,
+      targetCharacter,
+      appliedDetail,
+      createdEffect,
+      appliedTurn: event.turn,
+      appliedTurnLabel: `After Turn ${event.turn}`
+    });
+  }
+
   function createTurnNarrative(world, events) {
     const actionEvents = events.filter((event) => event.actorId && event.action);
     const actions = world.npcOrder.map((actorId) => {
@@ -197,6 +248,7 @@
       narrative: createTurnNarrative(world, currentTurnEvents),
       turns: turnRecords,
       outcome: outcomeView(world.outcome),
+      intervention: createInterventionSummary(timeline),
       selectableBoundaryIds: timeline.boundaries.map((boundary) => boundary.id),
       integrity: {
         allCausesVisible: events.every((event) => event.causes.every((causeId) => eventIds.has(causeId)))
@@ -204,5 +256,5 @@
     });
   }
 
-  return Object.freeze({ VIEW_MODEL_VERSION, createTimelineView });
+  return Object.freeze({ VIEW_MODEL_VERSION, createInterventionSummary, createTimelineView });
 });

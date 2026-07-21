@@ -2065,6 +2065,25 @@ code {
 
 .event-card.is-intervention .event-icon { color: #79d6b0; }
 
+.intervention-summary-card {
+  margin: 0.65rem 0.75rem;
+  border: 1px solid rgba(121, 214, 176, 0.34);
+  background: linear-gradient(120deg, rgba(55, 105, 84, 0.17), rgba(23, 27, 26, 0.92));
+}
+.intervention-summary-card > header { display: flex; justify-content: space-between; gap: 1rem; padding: 0.75rem 0.9rem; border-bottom: 1px solid rgba(121, 214, 176, 0.18); }
+.intervention-summary-card > header span { color: #79d6b0; font-size: 0.61rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
+.intervention-summary-card > header strong { font: 400 1rem var(--serif); }
+.intervention-summary-card dl { display: grid; margin: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.intervention-summary-card dl div { padding: 0.7rem 0.9rem; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.intervention-summary-card dt { color: var(--ink-muted); font-size: 0.58rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.intervention-summary-card dd { margin: 0.28rem 0 0; color: var(--ink-soft); font-size: 0.72rem; line-height: 1.45; }
+.intervention-summary-comparison { max-width: 1320px; margin: 0 auto 1rem; }
+.first-observable-impact { display: grid; max-width: 1320px; margin: 0 auto 1rem; padding: 1rem 1.15rem; border-left: 3px solid var(--gold); grid-template-columns: minmax(220px, auto) 1fr; gap: 1.2rem; align-items: center; background: rgba(214, 169, 92, 0.08); }
+.first-observable-impact p { margin: 0; color: var(--gold-pale); font: 400 1.2rem var(--serif); }
+.first-observable-impact div { display: grid; gap: 0.2rem; }
+.first-observable-impact strong { color: var(--ink); font-size: 0.64rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.first-observable-impact span { color: var(--ink-soft); font-size: 0.8rem; }
+
 .playback-control { flex-wrap: wrap; }
 .button-fork {
   flex: 1 0 100%;
@@ -2245,6 +2264,8 @@ code {
   .fork-arrow { justify-self: center; transform: rotate(90deg); }
   .outcome-triplet { grid-template-columns: 1fr; }
   .outcome-triplet div { border-right: 0; border-bottom: 1px solid var(--line); }
+  .intervention-summary-card dl { grid-template-columns: 1fr; }
+  .first-observable-impact { grid-template-columns: 1fr; }
   .decision-deltas article > div { grid-template-columns: 1fr; }
   .decision-deltas i { transform: rotate(90deg); }
 }

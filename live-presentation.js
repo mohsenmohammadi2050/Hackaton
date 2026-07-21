@@ -34,6 +34,12 @@
     });
   }
 
+  function boundaryHeading(boundary) {
+    return boundary?.classification === "post-intervention"
+      ? `Intervention applied after Turn ${boundary.turn}`
+      : `Turn ${boundary?.turn}`;
+  }
+
   function terminalOutcomeSummary(view) {
     if (!view?.outcome) return null;
     const outcome = view.outcome;
@@ -253,6 +259,14 @@
       const holder = view.antidote.used ? "Used" : view.antidote.possessorId ? `Held by ${view.npcs[view.antidote.possessorId]?.name || view.antidote.possessorId}` : `At ${view.locations[view.antidote.locationId]?.name || "unknown"}`;
       return `<section class="story-beat" aria-label="Current story summary"><div class="story-beat-copy"><p class="section-kicker">Latest authoritative story beat</p><h3>${escape(view.narrative.summary)}</h3><div class="story-actions">${view.narrative.actions.map((action) => `<button type="button" data-action="${action.eventId ? "select-live-event" : "select-live-npc"}" ${action.eventId ? `data-event="${escape(action.eventId)}" data-turn="${view.boundary.turn}"` : `data-npc="${escape(action.actorId)}"`}><img src="assets/${escape(action.actorId)}.svg" alt=""><span><strong>${escape(action.actorName)}</strong><small>${escape(action.action)} · ${escape(action.summary)}</small></span></button>`).join("")}</div></div><div class="story-vitals"><div><span>Patient</span><strong>${escape(view.patient.status)}</strong></div><div><span>Antidote</span><strong>${escape(holder)}</strong></div><div><span>Turns left</span><strong>${view.clock.turnsRemaining}</strong></div></div></section>`;
     }
+    function renderInterventionCard(summary, placement = "timeline") {
+      if (!summary) return "";
+      return `<article class="intervention-summary-card intervention-summary-${placement}" aria-label="Intervention summary"><header><span>Counterfactual intervention</span><strong>${escape(summary.type)}</strong></header><dl><div><dt>Target character</dt><dd>${escape(summary.targetCharacter)}</dd></div><div><dt>Applied</dt><dd>${escape(summary.appliedDetail)}</dd></div><div><dt>Memory or state created</dt><dd>${escape(summary.createdEffect)}</dd></div><div><dt>Applied turn</dt><dd>${escape(summary.appliedTurnLabel)}</dd></div></dl></article>`;
+    }
+    function renderFirstObservableImpact(impact) {
+      if (!impact) return "";
+      return `<section class="first-observable-impact"><p>First observable impact: Turn ${impact.turn}</p><div><strong>${escape(impact.kind)}</strong><span>${escape(impact.detail)}</span></div></section>`;
+    }
     function renderNpc(npc, locationName) {
       const selected = ui.selection.type === "npc" && ui.selection.id === npc.id;
       const moved = ui.movedNpcIds.includes(npc.id);
@@ -266,7 +280,8 @@
         const turnEvents = events.slice(previousEventCount, boundary.eventCount);
         const selected = view.boundary.id === boundary.id;
         const guidance = win.FORKED_FATES_FORK_GUIDANCE?.describe(boundary.turn, { deadline: 12, terminal: boundary.turn >= 12, hasAlternate: adapter.capabilities().hasAlternate, branch: ui.branch }) || { eligible: false, reason: "Fork unavailable", opportunity: "" };
-        return `<section class="turn-group ${selected ? "is-selected-turn" : ""}" data-fork-eligible="${guidance.eligible}"><button class="turn-header" type="button" data-action="select-live-boundary" data-boundary="${escape(boundary.id)}"><span class="turn-node" aria-hidden="true"></span><span><strong>Turn ${boundary.turn}</strong><small>${escape(boundary.classification)} · ${boundary.eventCount} events</small><small class="fork-eligibility ${guidance.eligible ? "is-eligible" : ""}">${escape(guidance.eligible ? `Fork available · ${guidance.opportunity}` : guidance.reason)}</small></span><span class="turn-status">${selected ? "Viewing" : "View"}</span></button><div class="event-list">${turnEvents.map(renderEventCard).join("")}</div></section>`;
+        const interventionCard = boundary.classification === "post-intervention" ? renderInterventionCard(frontier.intervention) : "";
+        return `<section class="turn-group ${selected ? "is-selected-turn" : ""}" data-fork-eligible="${guidance.eligible}"><button class="turn-header" type="button" data-action="select-live-boundary" data-boundary="${escape(boundary.id)}"><span class="turn-node" aria-hidden="true"></span><span><strong>${escape(boundaryHeading(boundary))}</strong><small>${escape(boundary.classification)} · ${boundary.eventCount} events</small><small class="fork-eligibility ${guidance.eligible ? "is-eligible" : ""}">${escape(guidance.eligible ? `Fork available · ${guidance.opportunity}` : guidance.reason)}</small></span><span class="turn-status">${selected ? "Viewing" : "View"}</span></button>${interventionCard}<div class="event-list">${turnEvents.map(renderEventCard).join("")}</div></section>`;
       }).join("");
     }
     function renderEventCard(event) {
@@ -337,7 +352,8 @@
     function renderComparison() {
       const result = adapter.compare();
       const changed = result.changedIntents.slice(0, 8);
-      const divergenceNotice = result.meaningfulDivergence.visible ? `<div class="divergence-notice is-visible"><strong>${escape(result.meaningfulDivergence.message)}</strong><span>${result.meaningfulDivergence.visibleCategories.map(escape).join(" · ")}</span></div>` : `<div class="divergence-notice is-ineffective"><strong>${escape(result.meaningfulDivergence.message)}</strong><span>${escape(result.meaningfulDivergence.suggestion)}</span></div>`;
+      const divergenceState = result.meaningfulDivergence.visible ? `<div class="divergence-notice is-visible"><strong>${escape(result.meaningfulDivergence.message)}</strong><span>${result.meaningfulDivergence.visibleCategories.map(escape).join(" · ")}</span></div>` : `<div class="divergence-notice is-ineffective"><strong>${escape(result.meaningfulDivergence.message)}</strong><span>${escape(result.meaningfulDivergence.suggestion)}</span></div>`;
+      const divergenceNotice = `${renderInterventionCard(result.intervention, "comparison")}${renderFirstObservableImpact(result.firstObservableImpact)}${divergenceState}`;
       app.innerHTML = `<section class="comparison-screen" aria-labelledby="comparison-title"><header class="comparison-header"><div><button class="text-button" data-action="close-comparison">← Back to timelines</button><p class="eyebrow"><span class="eyebrow-mark"></span>Validated branch comparison</p><h1 id="comparison-title">One event. Two causal futures.</h1><p>Shared through turn ${result.sharedPrefix.throughTurn}; ${result.firstDivergenceTurn === null ? "no visible autonomous or event divergence followed." : `the first meaningful divergence appears at turn ${result.firstDivergenceTurn}.`}</p></div><div class="comparison-seal"><span>Integrity ${escape(result.integritySchemaVersion)}</span><strong>Original remained immutable</strong></div></header>${divergenceNotice}<section class="fork-summary"><div><span>Shared prefix</span><strong>Turns 0–${result.sharedPrefix.throughTurn}</strong></div><div class="fork-arrow" aria-hidden="true">⑂</div><div><span>Intervention</span><strong>${escape(result.fork.interventionEventId)}</strong></div></section><div class="comparison-grid">${renderOutcomeColumn("Original", result.outcomes.original, result.deltas.antidote.original, "original")}${renderOutcomeColumn("Alternate", result.outcomes.alternate, result.deltas.antidote.alternate, "alternate")}</div><section class="divergence-panel"><div class="section-heading"><div><p class="section-kicker">Decision classification</p><h2>Autonomous intent deltas</h2></div><p>Evidence-only changes are not presented as changed actions.</p></div><div class="decision-deltas">${changed.map((change) => `<article><span>Turn ${change.turn} · ${escape(change.actorId)} · ${escape(change.label)}</span><div><p><small>Original</small>${escape(change.original?.action || "No intent")} — ${escape(change.original?.rationale || "")}</p><i aria-hidden="true">→</i><p><small>Alternate</small>${escape(change.alternate?.action || "No intent")} — ${escape(change.alternate?.rationale || "")}</p></div>${change.classifications.includes("evidence-changed-only") ? `<details><summary>Evidence considered</summary><p>Original: ${change.evidence.original.map(escape).join(", ") || "none"}</p><p>Alternate: ${change.evidence.alternate.map(escape).join(", ") || "none"}</p></details>` : ""}</article>`).join("") || `<p>No decision differences.</p>`}</div></section><section class="comparison-details"><article><p class="section-kicker">Trust changes</p><h2>${result.deltas.trust.length} directed relationships changed</h2>${result.deltas.trust.map((row) => `<p class="delta-row"><span>${escape(row.actorId)} → ${escape(row.targetId)}</span><strong>${row.original} → ${row.alternate} (${row.delta > 0 ? "+" : ""}${row.delta})</strong></p>`).join("") || `<p>No trust deltas.</p>`}</article><article><p class="section-kicker">Antidote path</p><h2>Physical state at conclusion</h2><p class="delta-row"><span>Original holder</span><strong>${escape(result.deltas.antidote.original.possessorId || result.deltas.antidote.original.locationId || "used")}</strong></p><p class="delta-row"><span>Alternate holder</span><strong>${escape(result.deltas.antidote.alternate.possessorId || result.deltas.antidote.alternate.locationId || "used")}</strong></p></article><article><p class="section-kicker">Causal support</p><h2>Authoritative vs comparison-only</h2><p>${result.causalSupport.alternate.edges.length} authoritative event-cause edges support the Alternate outcome.</p><p>${result.causalSupport.comparisonLinks.length} decision-change link is explicitly labeled comparison-only.</p></article></section><section class="causal-path-panel"><p class="section-kicker">Alternate outcome support</p><h2>Validated authoritative event path</h2><div class="causal-path">${result.causalSupport.alternate.events.slice().sort((a, b) => a.turn - b.turn).slice(-12).map((event) => `<button data-action="jump-comparison-event" data-event="${escape(event.id)}" data-turn="${event.turn}"><span>Turn ${event.turn}</span><strong>${escape(event.category)}</strong><small>${escape(event.description)}</small></button>`).join("<i aria-hidden=\"true\">→</i>")}</div>${result.causalSupport.comparisonLinks.map((link) => `<p class="comparison-only-note"><strong>Comparison-only link:</strong> ${escape(link.label)}</p>`).join("")}</section></section>`;
     }
     function renderOutcomeColumn(label, outcome, antidote, branch) {
@@ -465,5 +481,5 @@
     return Object.freeze({ start, render, handleAction });
   }
 
-  return Object.freeze({ classifyLiveError, failedActionExplanation, terminalOutcomeSummary, create });
+  return Object.freeze({ classifyLiveError, failedActionExplanation, boundaryHeading, terminalOutcomeSummary, create });
 });

@@ -1,13 +1,13 @@
 (function initializeBranchComparison(root, factory) {
   "use strict";
 
-  if (typeof module === "object" && module.exports) module.exports = factory(require("./timeline-integrity"));
-  else if (root) root.FORKED_FATES_BRANCH_COMPARISON = factory(root.FORKED_FATES_TIMELINE_INTEGRITY);
-})(typeof globalThis !== "undefined" ? globalThis : this, function createBranchComparisonApi(integrity) {
+  if (typeof module === "object" && module.exports) module.exports = factory(require("./timeline-integrity"), require("./live-view-models"));
+  else if (root) root.FORKED_FATES_BRANCH_COMPARISON = factory(root.FORKED_FATES_TIMELINE_INTEGRITY, root.FORKED_FATES_LIVE_VIEW_MODELS);
+})(typeof globalThis !== "undefined" ? globalThis : this, function createBranchComparisonApi(integrity, viewModels) {
   "use strict";
 
-  if (!integrity) throw new Error("Branch Comparison requires Timeline Integrity validation.");
-  const COMPARISON_VERSION = "1.1.0";
+  if (!integrity || !viewModels) throw new Error("Branch Comparison requires Timeline Integrity validation and Live view models.");
+  const COMPARISON_VERSION = "1.2.0";
 
   function deepClone(value) { return JSON.parse(JSON.stringify(value)); }
   function deepFreeze(value) {
@@ -227,6 +227,42 @@
     };
   }
 
+  function firstObservableImpact(original, alternate, meaningfulIntents, resultingEvents, locations, trust) {
+    const candidates = [];
+    const name = (id) => alternate.state.npcs[id]?.name || alternate.state.locations[id]?.name || id || "Unknown";
+    for (const change of meaningfulIntents) {
+      candidates.push({
+        turn: change.turn,
+        priority: 0,
+        kind: "Changed decision",
+        detail: `${name(change.actorId)}: ${change.original?.action || "No intent"} to ${change.alternate?.action || "No intent"}. ${change.label}.`,
+        eventId: null
+      });
+    }
+    const originalStoriesByTurn = new Map();
+    for (const event of original.state.events) {
+      if (!originalStoriesByTurn.has(event.turn)) originalStoriesByTurn.set(event.turn, new Set());
+      originalStoriesByTurn.get(event.turn).add(eventStorySignature(event));
+    }
+    const isChangedStory = (event) => !originalStoriesByTurn.get(event.turn)?.has(eventStorySignature(event));
+    for (const change of resultingEvents) {
+      const event = alternate.state.events.find((candidate) => change.alternateEventIds.includes(candidate.id) && isChangedStory(candidate) && !candidate.eventType?.startsWith("world.intervention.") && candidate.category !== "Memory and belief update");
+      if (event) candidates.push({ turn: event.turn, priority: 1, kind: "Changed event", detail: event.description, eventId: event.id });
+    }
+    for (const change of locations) {
+      const event = alternate.state.events.find((candidate) => candidate.turn > alternate.forkTurn && isChangedStory(candidate) && (candidate.changes?.locations || []).some((entry) => entry.actorId === change.actorId));
+      if (event) candidates.push({ turn: event.turn, priority: 2, kind: "Changed location", detail: `${name(change.actorId)}: ${name(change.original)} to ${name(change.alternate)}.`, eventId: event.id });
+    }
+    for (const change of trust) {
+      const event = alternate.state.events.find((candidate) => candidate.turn > alternate.forkTurn && isChangedStory(candidate) && (candidate.changes?.trust || []).some((entry) => entry.observerId === change.actorId && entry.subjectId === change.targetId));
+      if (event) candidates.push({ turn: event.turn, priority: 3, kind: "Changed trust", detail: `${name(change.actorId)} toward ${name(change.targetId)}: ${change.original} to ${change.alternate}.`, eventId: event.id });
+    }
+    candidates.sort((left, right) => left.turn - right.turn || left.priority - right.priority || left.detail.localeCompare(right.detail));
+    if (!candidates.length) return null;
+    const first = candidates[0];
+    return { turn: first.turn, kind: first.kind, detail: first.detail, eventId: first.eventId };
+  }
+
   function compareTimelineSession(session) {
     const report = integrity.validateTimelineSession(session);
     if (!session.alternate || session.alternate.status !== "completed") throw new Error("Comparison requires one completed Alternate timeline.");
@@ -250,6 +286,8 @@
     const locations = locationDelta(original, alternate);
     const memories = memoryDelta(original, alternate);
     const outcomes = outcomeDelta(original, alternate);
+    const intervention = viewModels.createInterventionSummary(alternate);
+    const observableImpact = firstObservableImpact(original, alternate, meaningfulIntents, resultingEvents, locations, trust);
     const antidoteChanged = signature(original.state.antidote) !== signature(alternate.state.antidote);
     const visibleCategories = [];
     if (meaningfulIntents.length) visibleCategories.push("decision-changed");
@@ -271,7 +309,9 @@
       integritySchemaVersion: report.schemaVersion,
       sharedPrefix: { throughTurn: alternate.forkTurn, originalBranchId: original.branchId, alternateBranchId: alternate.branchId },
       fork: { turn: alternate.forkTurn, interventionEventId: alternate.interventionEventId },
+      intervention,
       firstDivergenceTurn,
+      firstObservableImpact: observableImpact,
       changedIntents: intents,
       changedEvents: events,
       outcomes: { original: deepClone(original.state.outcome), alternate: deepClone(alternate.state.outcome) },
