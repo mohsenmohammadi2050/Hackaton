@@ -190,20 +190,20 @@
     app.innerHTML = `
       <section class="workspace" aria-labelledby="workspace-title">
         <header class="workspace-topbar">
-          <div class="brand-lockup">
+          <button class="brand-lockup brand-home" type="button" data-action="back-start" aria-label="Back to Start">
             <span class="brand-sigil" aria-hidden="true">FF</span>
             <div>
               <p>Forked Fates</p>
               <h1 id="workspace-title">The Last Antidote</h1>
             </div>
-          </div>
+          </button>
           <div class="status-strip" aria-label="Current branch status">
             <div class="status-cell"><span>Branch</span><strong>Original</strong></div>
             <div class="status-cell"><span>Current turn</span><strong>${state.currentTurn} <small>/ 12 · ${currentSnapshot.turnsRemaining} remain</small></strong></div>
             <div class="status-cell status-patient ${patientLost ? "status-lost" : ""}"><span>Patient</span><strong><i aria-hidden="true"></i> ${patientLost ? "Lost" : "Untreated"}</strong></div>
             <div class="mode-pill mode-pill-strong"><span class="record-dot" aria-hidden="true"></span> Recorded</div>
           </div>
-          <div class="workspace-nav-actions"><button class="text-button" type="button" data-action="back-start">Back to Start</button><button class="icon-button" type="button" data-action="restart" title="Restart recorded session" aria-label="Restart recorded session">↻</button></div>
+          <div class="workspace-nav-actions"><button class="icon-button" type="button" data-action="restart" title="Restart recorded session" aria-label="Restart recorded session">↻</button></div>
         </header>
 
         <div class="workspace-body">

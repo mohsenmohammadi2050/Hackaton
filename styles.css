@@ -597,6 +597,22 @@ a:focus-visible {
   gap: 0.8rem;
 }
 
+.brand-home {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+
+.brand-home:hover .brand-sigil,
+.brand-home:focus-visible .brand-sigil {
+  border-color: var(--gold-pale);
+  box-shadow: 0 0 18px rgba(214, 169, 92, 0.14);
+}
+
 .brand-sigil {
   display: grid;
   place-items: center;
@@ -2286,7 +2302,6 @@ code {
   gap: 0.65rem;
 }
 
-.workspace-nav-actions .text-button { white-space: nowrap; }
 
 .jump-latest {
   margin-top: 0.25rem;
@@ -2317,8 +2332,7 @@ code {
 
 @media (max-width: 820px) {
   .start-primary-choices { grid-template-columns: 1fr; }
-  .workspace-nav-actions { flex-direction: column-reverse; gap: 0.25rem; }
-  .workspace-nav-actions .text-button { font-size: 0.58rem; }
+  .workspace-nav-actions { gap: 0.25rem; }
 }
 
 @media (max-width: 900px) {

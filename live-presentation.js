@@ -251,14 +251,14 @@
       app.innerHTML = `
         <section class="workspace live-workspace" aria-labelledby="workspace-title">
           <header class="workspace-topbar">
-            <div class="brand-lockup"><span class="brand-sigil" aria-hidden="true">FF</span><div><p>Forked Fates</p><h1 id="workspace-title">The Last Antidote</h1></div></div>
+            <button class="brand-lockup brand-home" type="button" data-action="back-start" aria-label="Back to Start"><span class="brand-sigil" aria-hidden="true">FF</span><div><p>Forked Fates</p><h1 id="workspace-title">The Last Antidote</h1></div></button>
             <div class="status-strip" aria-label="Live branch status">
               <div class="status-cell"><span>Branch</span><strong>${view.branch.kind}</strong></div>
               <div class="status-cell"><span>Completed turn</span><strong>${frontier.clock.turn} <small>/ 12 · ${frontier.clock.turnsRemaining} remain</small></strong></div>
               <div class="status-cell status-patient ${patientLost ? "status-lost" : ""}"><span>Patient</span><strong><i aria-hidden="true"></i> ${escape(frontier.patient.status)}</strong></div>
               <div class="mode-pill mode-pill-strong ${mode === "ai-live" ? "mode-live" : ""}"><span class="live-pulse" aria-hidden="true"></span> ${mode === "ai-live" ? escape(ui.providerLabel) : "Deterministic"}</div>
             </div>
-            <div class="workspace-nav-actions"><button class="text-button" type="button" data-action="back-start">Back to Start</button><button class="icon-button" type="button" data-action="restart-live" title="Restart Live session" aria-label="Restart Live session">↻</button></div>
+            <div class="workspace-nav-actions"><button class="icon-button" type="button" data-action="restart-live" title="Restart Live session" aria-label="Restart Live session">↻</button></div>
           </header>
           ${hasAlternate ? renderBranchBar(view) : ""}
           <div class="workspace-body">

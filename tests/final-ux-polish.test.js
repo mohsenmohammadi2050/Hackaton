@@ -211,9 +211,11 @@ test("Back to Start and Start New Simulation are present across all required maj
   const app = read("app.js");
   const live = read("live-presentation.js");
   assert.match(app, /briefing-header[\s\S]*Back to Start/);
-  assert.match(app, /workspace-nav-actions[\s\S]*Back to Start/);
+  assert.match(app, /brand-lockup brand-home[\s\S]*data-action="back-start"/);
+  assert.doesNotMatch(app, /workspace-nav-actions"><button class="text-button"[^>]*data-action="back-start"/);
   assert.match(app, /recorded-terminal-completion[\s\S]*Start New Simulation[\s\S]*Back to Start/);
-  assert.match(live, /workspace-nav-actions[\s\S]*Back to Start/);
+  assert.match(live, /brand-lockup brand-home[\s\S]*data-action="back-start"/);
+  assert.doesNotMatch(live, /workspace-nav-actions"><button class="text-button"[^>]*data-action="back-start"/);
   assert.match(live, /live-state-back[\s\S]*Back to Start/);
   assert.match(live, /overlay-back-start[\s\S]*Back to Start/);
   assert.match(live, /Start New Simulation/);

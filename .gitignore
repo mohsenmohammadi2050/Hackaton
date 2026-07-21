@@ -50,3 +50,5 @@ phase-*-git-log.txt
 # Local review screenshots
 phase-8-screenshots/
 phase-*-screenshots/
+
+CODEX_*.md
