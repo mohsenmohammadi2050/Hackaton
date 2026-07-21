@@ -2238,6 +2238,89 @@ code {
 .causal-path > i { align-self: center; color: #79d6b0; font-style: normal; }
 .comparison-only-note { padding: 0.75rem; border-left: 2px solid var(--gold); color: var(--ink-soft); background: rgba(214, 169, 92, 0.08); font-size: 0.75rem; }
 
+/* Final presentation navigation and stable-history controls */
+.start-primary-choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mode-choice {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  min-height: 76px;
+  text-align: left;
+}
+
+.mode-choice strong { font: 400 1.05rem var(--serif); }
+.mode-choice span { margin-top: 0.24rem; color: currentColor; opacity: 0.72; font-size: 0.66rem; }
+
+.mode-explanations {
+  display: grid;
+  gap: 0.3rem;
+  margin-top: 0.85rem;
+  color: var(--ink-muted);
+  font-size: 0.68rem;
+}
+
+.mode-explanations p { margin: 0; }
+.mode-explanations strong { color: var(--ink-soft); }
+
+.advanced-modes {
+  max-width: 430px;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+  color: var(--ink-muted);
+  font-size: 0.7rem;
+}
+
+.advanced-modes summary { color: var(--ink-soft); cursor: pointer; }
+.advanced-modes p { margin: 0.7rem 0; }
+.advanced-modes .button { min-height: 38px; }
+
+.workspace-nav-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem;
+}
+
+.workspace-nav-actions .text-button { white-space: nowrap; }
+
+.jump-latest {
+  margin-top: 0.25rem;
+  color: var(--gold-pale);
+  font-size: 0.6rem;
+  text-decoration: underline;
+  text-underline-offset: 0.18rem;
+}
+
+.recorded-story-beat .story-actions > .empty-copy { grid-column: 1 / -1; }
+.recorded-terminal-completion .outcome-evidence { border-bottom: 0; }
+.recorded-terminal-completion .outcome-results { grid-template-columns: repeat(3, 1fr); }
+
+.live-state-back {
+  position: absolute;
+  top: 1.25rem;
+  left: 1.25rem;
+}
+
+.overlay-back-start {
+  position: relative;
+  z-index: 2;
+  align-self: flex-start;
+  margin: 0 0 0.8rem;
+}
+
+.comparison-screen > .overlay-back-start { margin-bottom: 1.2rem; }
+
+@media (max-width: 820px) {
+  .start-primary-choices { grid-template-columns: 1fr; }
+  .workspace-nav-actions { flex-direction: column-reverse; gap: 0.25rem; }
+  .workspace-nav-actions .text-button { font-size: 0.58rem; }
+}
+
 @media (max-width: 900px) {
   .branch-bar,
   .comparison-header { align-items: stretch; flex-direction: column; }

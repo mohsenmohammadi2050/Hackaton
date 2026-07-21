@@ -88,15 +88,17 @@
     const escape = options.escapeHtml;
     const useRecorded = options.onUseRecorded;
     const backToStart = options.onBackStart;
+    const adapterFactory = options.adapterFactory;
     const mode = options.mode || "deterministic";
     const showDemoTools = options.demoTools === true || new URLSearchParams(win.location?.search || "").get("demo") === "1";
     let adapter = null;
     let runTimer = null;
+    let disposed = false;
     const ui = {
       branch: "original",
       frontiers: { original: 0, alternate: 0 },
       selections: { original: null, alternate: null },
-      selection: { type: "event", id: null },
+      inspectorSelections: { original: { type: "event", id: null }, alternate: { type: "event", id: null } },
       running: false,
       resolving: false,
       pauseRequested: false,
@@ -108,11 +110,40 @@
       composer: false,
       interventionCategory: "Information",
       compare: false,
-      followLive: true,
+      followLive: { original: true, alternate: true },
       movedNpcIds: []
     };
 
+    function currentInspectorSelection(branch = ui.branch) { return ui.inspectorSelections[branch]; }
+    function setInspectorSelection(selection, branch = ui.branch) { ui.inspectorSelections[branch] = selection; }
+    function isFollowing(branch = ui.branch) { return ui.followLive[branch]; }
+
+    function captureScrollState() {
+      const timeline = doc.querySelector(".timeline");
+      const inspector = doc.querySelector(".inspector-scroll");
+      return {
+        pageX: win.scrollX || win.pageXOffset || 0,
+        pageY: win.scrollY || win.pageYOffset || 0,
+        timelineTop: timeline?.scrollTop || 0,
+        inspectorTop: inspector?.scrollTop || 0
+      };
+    }
+
+    function restoreScrollState(snapshot, options = {}) {
+      if (!snapshot) return;
+      const restore = () => {
+        const timeline = doc.querySelector(".timeline");
+        const inspector = doc.querySelector(".inspector-scroll");
+        if (timeline) timeline.scrollTop = options.timelineToEnd ? timeline.scrollHeight : snapshot.timelineTop;
+        if (inspector) inspector.scrollTop = options.inspectorToTop ? 0 : snapshot.inspectorTop;
+        if (typeof win.scrollTo === "function") win.scrollTo(snapshot.pageX, snapshot.pageY);
+      };
+      restore();
+      win.requestAnimationFrame?.(restore);
+    }
+
     function announce(message) {
+      if (disposed) return;
       announcer.textContent = "";
       win.setTimeout(() => { announcer.textContent = message; }, 20);
     }
@@ -122,6 +153,7 @@
       ui.running = false;
     }
     function fail(error) {
+      if (disposed) return;
       stopTimer();
       ui.loading = false;
       ui.error = error?.message || "Live simulation could not continue.";
@@ -130,12 +162,17 @@
       announce(`Live simulation error. ${ui.error}`);
     }
     async function start() {
+      disposed = false;
       ui.loading = true;
       ui.aiStatus = mode === "ai-live" ? "Connecting to AI provider…" : "Preparing deterministic simulation…";
       render();
       await new Promise((resolve) => win.setTimeout(resolve, 30));
+        if (disposed) return;
         try {
-          if (mode === "ai-live") {
+          if (typeof adapterFactory === "function") {
+            adapter = adapterFactory(mode);
+            ui.providerLabel = mode === "ai-live" ? "AI Live" : "Deterministic";
+          } else if (mode === "ai-live") {
             const providerApi = win.FORKED_FATES_AI_LIVE_PROVIDER;
             const aiAdapterApi = win.FORKED_FATES_AI_LIVE_SESSION_ADAPTER;
             if (!providerApi || !aiAdapterApi) throw new Error("AI Live modules are unavailable in this build.");
@@ -157,12 +194,12 @@
           }
           const initial = adapter.currentView("original");
           ui.selections.original = initial.boundary.id;
-          ui.selection = { type: "event", id: initial.events[0]?.id || null };
+          setInspectorSelection({ type: "event", id: initial.events[0]?.id || null }, "original");
           ui.loading = false;
           ui.aiStatus = mode === "ai-live" ? "Ready at Turn 0" : "Ready at Turn 0";
           render();
           announce(`${mode === "ai-live" ? "AI Live" : "Deterministic"} authoritative Original ready at turn zero.`);
-        } catch (error) { fail(error); }
+        } catch (error) { if (!disposed) fail(error); }
     }
     function list(branch = ui.branch) { return adapter.boundaryList(branch); }
     function selectedView(branch = ui.branch) {
@@ -182,19 +219,26 @@
       return adapter.capabilities().canCompare && branchComplete("original") && branchComplete("alternate");
     }
 
-    function render() {
+    function render(options = {}) {
+      if (disposed) return;
+      const scroll = captureScrollState();
       if (ui.loading) {
-        app.innerHTML = `<section class="live-state-screen" aria-labelledby="live-loading-title"><div class="loading-orbit" aria-hidden="true"></div><p class="eyebrow"><span class="eyebrow-mark"></span>${mode === "ai-live" ? "AI Live Simulation" : "Deterministic Simulation"}</p><h1 id="live-loading-title">${escape(ui.aiStatus || "Freezing the first boundary…")}</h1><p>${mode === "ai-live" ? "Each character will receive only its owned state through the secure local provider proxy." : "Four rule-based decisions will resolve reproducibly through authoritative World rules."}</p></section>`;
+        app.innerHTML = `<section class="live-state-screen" aria-labelledby="live-loading-title"><button class="text-button live-state-back" data-action="back-start" type="button">← Back to Start</button><div class="loading-orbit" aria-hidden="true"></div><p class="eyebrow"><span class="eyebrow-mark"></span>${mode === "ai-live" ? "AI Live Simulation" : "Deterministic Simulation"}</p><h1 id="live-loading-title">${escape(ui.aiStatus || "Freezing the first boundary…")}</h1><p>${mode === "ai-live" ? "Each character will receive only its owned state through the secure local provider proxy." : "Four rule-based decisions will resolve reproducibly through authoritative World rules."}</p></section>`;
+        restoreScrollState(scroll, options);
         return;
       }
       if (ui.error) {
         const classification = classifyLiveError(ui.errorCode, mode);
-        app.innerHTML = `<section class="live-state-screen error-state" aria-labelledby="live-error-title"><span class="error-glyph" aria-hidden="true">!</span><p class="eyebrow">Frozen-boundary recovery</p><h1 id="live-error-title">${classification.title}</h1><p>${escape(ui.error)}</p><p>${escape(classification.recovery)}</p><div class="start-actions"><button class="button button-primary" data-action="retry-live" type="button">Retry ${mode === "ai-live" ? "AI Live" : "simulation"}</button><button class="button button-secondary" data-action="back-start" type="button">Return to start</button><button class="button button-tertiary" data-action="use-recorded" type="button">Explore Recorded Demo</button></div></section>`;
+        app.innerHTML = `<section class="live-state-screen error-state" aria-labelledby="live-error-title"><button class="text-button live-state-back" data-action="back-start" type="button">← Back to Start</button><span class="error-glyph" aria-hidden="true">!</span><p class="eyebrow">Frozen-boundary recovery</p><h1 id="live-error-title">${classification.title}</h1><p>${escape(ui.error)}</p><p>${escape(classification.recovery)}</p><div class="start-actions"><button class="button button-primary" data-action="retry-live" type="button">Retry ${mode === "ai-live" ? "AI Live" : "simulation"}</button><button class="button button-secondary" data-action="back-start" type="button">Back to Start</button><button class="button button-tertiary" data-action="use-recorded" type="button">Explore Demo</button></div></section>`;
+        restoreScrollState(scroll, options);
         return;
       }
       if (!adapter) return;
       if (ui.compare) renderComparison();
       else renderWorkspace();
+      const majorOverlay = app.querySelector?.(ui.compare ? ".comparison-screen" : ui.composer ? ".intervention-modal" : ".no-overlay");
+      majorOverlay?.insertAdjacentHTML("afterbegin", `<button class="text-button overlay-back-start" data-action="back-start" type="button">← Back to Start</button>`);
+      restoreScrollState(scroll, options);
     }
 
     function renderWorkspace() {
@@ -214,7 +258,7 @@
               <div class="status-cell status-patient ${patientLost ? "status-lost" : ""}"><span>Patient</span><strong><i aria-hidden="true"></i> ${escape(frontier.patient.status)}</strong></div>
               <div class="mode-pill mode-pill-strong ${mode === "ai-live" ? "mode-live" : ""}"><span class="live-pulse" aria-hidden="true"></span> ${mode === "ai-live" ? escape(ui.providerLabel) : "Deterministic"}</div>
             </div>
-            <button class="icon-button" type="button" data-action="restart-live" title="Restart Live session" aria-label="Restart Live session">↻</button>
+            <div class="workspace-nav-actions"><button class="text-button" type="button" data-action="back-start">Back to Start</button><button class="icon-button" type="button" data-action="restart-live" title="Restart Live session" aria-label="Restart Live session">↻</button></div>
           </header>
           ${hasAlternate ? renderBranchBar(view) : ""}
           <div class="workspace-body">
@@ -268,7 +312,8 @@
       return `<section class="first-observable-impact"><p>First observable impact: Turn ${impact.turn}</p><div><strong>${escape(impact.kind)}</strong><span>${escape(impact.detail)}</span></div></section>`;
     }
     function renderNpc(npc, locationName) {
-      const selected = ui.selection.type === "npc" && ui.selection.id === npc.id;
+      const selection = currentInspectorSelection();
+      const selected = selection.type === "npc" && selection.id === npc.id;
       const moved = ui.movedNpcIds.includes(npc.id);
       return `<button class="npc-token ${selected ? "is-selected" : ""} ${moved ? "is-moving" : ""}" type="button" data-action="select-live-npc" data-npc="${escape(npc.id)}" aria-label="Inspect ${escape(npc.name)}, ${escape(npc.role)}, at ${escape(locationName)}"><img class="portrait portrait-small portrait-image" src="assets/${escape(npc.id)}.svg" alt=""><span><strong>${escape(npc.name.split(" ")[0])}</strong><small>${escape(npc.role)}</small></span><span class="posture-dot" title="${escape(npc.posture)} posture"></span></button>`;
     }
@@ -285,7 +330,8 @@
       }).join("");
     }
     function renderEventCard(event) {
-      const selected = ui.selection.type === "event" && ui.selection.id === event.id;
+      const selection = currentInspectorSelection();
+      const selected = selection.type === "event" && selection.id === event.id;
       const tone = /belief|memory/i.test(event.category) ? "belief" : /claim|communication|accus/i.test(event.category) ? "claim" : "fact";
       return `<button class="event-card event-${tone} ${selected ? "is-selected" : ""} ${event.isIntervention ? "is-intervention" : ""}" type="button" data-action="select-live-event" data-event="${escape(event.id)}" data-turn="${event.turn}"><span class="event-icon" aria-hidden="true">${event.isIntervention ? "✦" : tone === "fact" ? "◇" : tone === "claim" ? "“" : "⌁"}</span><span class="event-copy"><span class="event-meta">${escape(event.category)} · ${escape(event.visibility)}</span><strong>${escape(event.description)}</strong><small>${escape(event.actorName)} · ${escape(event.locationName)}</small></span><span class="event-arrow" aria-hidden="true">›</span></button>`;
     }
@@ -298,12 +344,13 @@
       const pausedStatus = typeof ui.aiStatus === "string" && ui.aiStatus.startsWith("Paused after Turn") ? ui.aiStatus : null;
       const status = awaitingIntervention ? "Awaiting exactly one typed intervention" : complete ? "Simulation complete" : ui.resolving ? `Resolving Turn ${frontier.boundary.turn + 1}…` : ui.running ? "Auto-running" : pausedStatus || `Ready at Turn ${frontier.boundary.turn}`;
       const disabled = ui.running || ui.resolving || complete || awaitingIntervention || deterministicPreparation;
-      return `<div class="playback-control"><div class="playback-status"><span>${view.branch.kind} · ${mode === "ai-live" ? escape(ui.providerLabel) : "deterministic"}</span><strong>${status}</strong><button class="follow-toggle" type="button" data-action="toggle-follow" aria-pressed="${ui.followLive}">Follow live events: ${ui.followLive ? "On" : "Off"}</button></div><div class="playback-buttons" role="group" aria-label="Simulation playback controls"><button class="button button-compact" title="Resolve one decision round and stop." data-action="live-step" ${disabled ? "disabled" : ""}>Next Turn →</button><button class="button button-compact button-run" title="Continue automatically until paused or completed." data-action="live-run" ${disabled ? "disabled" : ""}>Run to End ▶</button><button class="button button-compact button-pause" title="Stop after the current turn finishes." data-action="live-pause" ${ui.running ? "" : "disabled"}>Pause Ⅱ</button></div>${forkable ? `<button class="button button-fork" data-action="open-fork">Fork from turn ${view.boundary.turn} <span aria-hidden="true">⑂</span></button>` : ""}${deterministicPreparation ? `<button class="button button-primary button-resolve" data-action="resolve-alternate">Prepare Alternate future</button>` : ""}${canCompare() ? `<button class="button button-primary button-resolve" data-action="open-comparison">Compare outcomes</button>` : ""}</div>`;
+      return `<div class="playback-control"><div class="playback-status"><span>${view.branch.kind} · ${mode === "ai-live" ? escape(ui.providerLabel) : "deterministic"}</span><strong>${status}</strong><button class="follow-toggle" type="button" data-action="toggle-follow" aria-pressed="${isFollowing()}">Follow live events: ${isFollowing() ? "On" : "Off"}</button>${isFollowing() ? "" : `<button class="jump-latest" type="button" data-action="jump-live-latest">Jump to latest</button>`}</div><div class="playback-buttons" role="group" aria-label="Simulation playback controls"><button class="button button-compact" title="Resolve one decision round and stop." data-action="live-step" ${disabled ? "disabled" : ""}>Next Turn →</button><button class="button button-compact button-run" title="Continue automatically until paused or completed." data-action="live-run" ${disabled ? "disabled" : ""}>Run to End ▶</button><button class="button button-compact button-pause" title="Stop after the current turn finishes." data-action="live-pause" ${ui.running ? "" : "disabled"}>Pause Ⅱ</button></div>${forkable ? `<button class="button button-fork" data-action="open-fork">Fork from turn ${view.boundary.turn} <span aria-hidden="true">⑂</span></button>` : ""}${deterministicPreparation ? `<button class="button button-primary button-resolve" data-action="resolve-alternate">Prepare Alternate future</button>` : ""}${canCompare() ? `<button class="button button-primary button-resolve" data-action="open-comparison">Compare outcomes</button>` : ""}</div>`;
     }
 
     function renderInspector(view) {
-      if (ui.selection.type === "npc" && view.npcs[ui.selection.id]) return renderNpcInspector(view.npcs[ui.selection.id], view);
-      const event = view.events.find((item) => item.id === ui.selection.id) || view.events.at(-1) || null;
+      const selection = currentInspectorSelection();
+      if (selection.type === "npc" && view.npcs[selection.id]) return renderNpcInspector(view.npcs[selection.id], view);
+      const event = view.events.find((item) => item.id === selection.id) || view.events.at(-1) || null;
       if (!event) return `<div class="inspector-header"><div><p class="section-kicker">Inspector</p><h2 id="inspector-title">Starting boundary</h2></div></div><p class="empty-copy">Select a character or completed event.</p>`;
       return renderEventInspector(event, view);
     }
@@ -332,7 +379,7 @@
           : summary.holderLocationName ? `The antidote remained at ${summary.holderLocationName}.` : "No successful administration was resolved.";
       const earlierTurns = capabilities.eligibleForkTurns.filter((turn) => turn < summary.completedTurns);
       const forkTurn = earlierTurns.length ? Math.max(...earlierTurns) : null;
-      return `<section class="terminal-completion" data-terminal-reason="${summary.terminalReason}"><header><div><p class="section-kicker">Authoritative terminal outcome</p><h2>Simulation complete — Niko was ${escape(summary.medical.toLowerCase())}</h2><p>${escape(summary.terminalReasonLabel)} ${escape(holder)}</p></div><span class="outcome-complete-mark">Branch complete</span></header><p class="terminal-causal-chain">${summary.causalChain.length ? summary.causalChain.map((event) => escape(event.description)).join(" ") : escape(summary.decisiveDescription)}</p><dl class="outcome-results"><div class="outcome-result"><dt>Medical</dt><dd>${escape(summary.medical)}</dd></div><div class="outcome-result"><dt>Truth</dt><dd>${escape(summary.truth)}</dd></div><div class="outcome-result"><dt>Social</dt><dd>${escape(summary.social)}</dd></div><div class="outcome-result"><dt>Completed turns</dt><dd>${summary.completedTurns}</dd></div></dl><div class="terminal-actions">${summary.decisiveEventId ? `<button class="button button-secondary button-compact" data-action="select-live-event" data-event="${escape(summary.decisiveEventId)}" data-turn="${summary.completedTurns}">Inspect decisive event</button>` : ""}${forkTurn !== null ? `<button class="button button-secondary button-compact" data-action="fork-terminal" data-turn="${forkTurn}">Fork an earlier turn</button>` : ""}${capabilities.hasAlternate ? `<button class="button button-secondary button-compact" data-action="open-comparison" ${canCompare() ? "" : "disabled"}>Compare branches</button>` : ""}<button class="button button-tertiary button-compact" data-action="back-start">Return to start</button></div></section>`;
+      return `<section class="terminal-completion" data-terminal-reason="${summary.terminalReason}"><header><div><p class="section-kicker">Authoritative terminal outcome</p><h2>Simulation complete — Niko was ${escape(summary.medical.toLowerCase())}</h2><p>${escape(summary.terminalReasonLabel)} ${escape(holder)}</p></div><span class="outcome-complete-mark">Branch complete</span></header><p class="terminal-causal-chain">${summary.causalChain.length ? summary.causalChain.map((event) => escape(event.description)).join(" ") : escape(summary.decisiveDescription)}</p><dl class="outcome-results"><div class="outcome-result"><dt>Medical</dt><dd>${escape(summary.medical)}</dd></div><div class="outcome-result"><dt>Truth</dt><dd>${escape(summary.truth)}</dd></div><div class="outcome-result"><dt>Social</dt><dd>${escape(summary.social)}</dd></div><div class="outcome-result"><dt>Completed turns</dt><dd>${summary.completedTurns}</dd></div></dl><div class="terminal-actions">${summary.decisiveEventId ? `<button class="button button-secondary button-compact" data-action="select-live-event" data-event="${escape(summary.decisiveEventId)}" data-turn="${summary.completedTurns}">Inspect decisive event</button>` : ""}${forkTurn !== null ? `<button class="button button-secondary button-compact" data-action="fork-terminal" data-turn="${forkTurn}">Fork an earlier turn</button>` : ""}${capabilities.hasAlternate ? `<button class="button button-secondary button-compact" data-action="open-comparison" ${canCompare() ? "" : "disabled"}>Compare branches</button>` : ""}<button class="button button-primary button-compact" data-action="restart-live">Start New Simulation</button><button class="button button-tertiary button-compact" data-action="back-start">Back to Start</button></div></section>`;
     }
 
     function renderComposer(view) {
@@ -363,18 +410,19 @@
     async function step() {
       if (branchComplete(ui.branch) || ui.resolving) return;
       const before = frontierView();
-      const selectedBefore = ui.selections[ui.branch];
-      const wasFollowingFrontier = selectedBefore === before.boundary.id;
+      const follow = isFollowing();
       if (adapter.dynamic) {
         ui.resolving = true;
         ui.aiStatus = `Generating 4 character decisions…`;
         render();
         try {
           await adapter.resolveNext(ui.branch, (status) => {
+            if (disposed) return;
             ui.aiStatus = status.phase === "validating" ? "Validating decisions…" : status.phase === "resolving" ? `Resolving Turn ${status.turn}…` : "Generating 4 character decisions…";
             render();
           });
         } catch (error) { ui.resolving = false; fail(error); throw error; }
+        if (disposed) return;
         ui.resolving = false;
         ui.frontiers[ui.branch] = list().length - 1;
       } else ui.frontiers[ui.branch] += 1;
@@ -382,13 +430,12 @@
       const nextId = boundaries[ui.frontiers[ui.branch]].id;
       const after = adapter.viewAt(ui.branch, nextId);
       ui.movedNpcIds = Object.keys(after.npcs).filter((id) => before.npcs[id].locationId !== after.npcs[id].locationId);
-      if (ui.followLive || wasFollowingFrontier) {
+      if (follow) {
         ui.selections[ui.branch] = nextId;
-        ui.selection = { type: "event", id: after.currentTurnEvents[0]?.id || after.events.at(-1)?.id || null };
+        setInspectorSelection({ type: "event", id: after.currentTurnEvents[0]?.id || after.events.at(-1)?.id || null });
       }
       ui.aiStatus = branchComplete(ui.branch) ? "Simulation complete" : ui.running ? "Auto-running" : `Ready at Turn ${after.boundary.turn}`;
-      render();
-      if (ui.followLive) win.requestAnimationFrame?.(() => { const timeline = doc.querySelector(".timeline"); if (timeline) timeline.scrollTop = timeline.scrollHeight; });
+      render({ timelineToEnd: follow });
       announce(`${after.branch.kind} turn ${after.boundary.turn} ${after.boundary.classification} complete. ${after.clock.turnsRemaining} turns remain.`);
     }
     function run() {
@@ -432,8 +479,8 @@
         ui.composer = false;
         ui.selections.alternate = post.boundary.id;
         ui.frontiers.alternate = list("alternate").findIndex((boundary) => boundary.id === post.boundary.id);
-        ui.selection = { type: "event", id: post.currentTurnEvents.at(-1)?.id || post.events.at(-1)?.id };
-        render();
+        setInspectorSelection({ type: "event", id: post.currentTurnEvents.at(-1)?.id || post.events.at(-1)?.id }, "alternate");
+        render({ timelineToEnd: isFollowing("alternate"), inspectorToTop: true });
         announce("Intervention validated and resolved as an authoritative World event. Alternate is ready to continue.");
       } catch (error) { fail(error); }
     }
@@ -445,25 +492,56 @@
       ui.frontiers.alternate = list("alternate").length - 1;
       ui.selections.alternate = list("alternate").at(-1).id;
       ui.composer = true;
-      ui.selection = { type: "event", id: selectedView("alternate").events.at(-1)?.id };
+      setInspectorSelection({ type: "event", id: selectedView("alternate").events.at(-1)?.id }, "alternate");
       render();
       announce(`Alternate forked from completed turn ${turn}. Choose exactly one intervention.`);
+    }
+
+    function jumpToLatest(branch = ui.branch) {
+      const boundaries = list(branch);
+      const boundary = boundaries[ui.frontiers[branch]];
+      ui.selections[branch] = boundary.id;
+      const view = adapter.viewAt(branch, boundary.id);
+      setInspectorSelection({ type: "event", id: view.currentTurnEvents.at(-1)?.id || view.events.at(-1)?.id || null }, branch);
+      ui.followLive[branch] = true;
+      render({ timelineToEnd: true, inspectorToTop: true });
+    }
+
+    function dispose() {
+      stopTimer();
+      ui.pauseRequested = true;
+      ui.resolving = false;
+      disposed = true;
+    }
+
+    function navigationState() {
+      return Object.freeze({
+        branch: ui.branch,
+        selections: { ...ui.selections },
+        inspectorSelections: {
+          original: { ...ui.inspectorSelections.original },
+          alternate: { ...ui.inspectorSelections.alternate }
+        },
+        followLive: { ...ui.followLive },
+        disposed
+      });
     }
 
     function handleAction(control) {
       const action = control.dataset.action;
       if (action === "retry-live") { ui.error = null; ui.errorCode = null; if (adapter) { render(); step(); } else start(); return true; }
-      if (action === "back-start") { stopTimer(); backToStart?.(); return true; }
-      if (action === "use-recorded") { stopTimer(); useRecorded(); return true; }
+      if (action === "back-start") { dispose(); backToStart?.(); return true; }
+      if (action === "use-recorded") { dispose(); useRecorded(); return true; }
       if (!adapter) return false;
-      if (action === "restart-live") { stopTimer(); adapter = null; Object.assign(ui, { branch: "original", frontiers: { original: 0, alternate: 0 }, selections: { original: null, alternate: null }, selection: { type: "event", id: null }, error: null, errorCode: null, composer: false, compare: false }); start(); return true; }
+      if (action === "restart-live") { stopTimer(); adapter = null; Object.assign(ui, { branch: "original", frontiers: { original: 0, alternate: 0 }, selections: { original: null, alternate: null }, inspectorSelections: { original: { type: "event", id: null }, alternate: { type: "event", id: null } }, followLive: { original: true, alternate: true }, error: null, errorCode: null, composer: false, compare: false }); start(); return true; }
       if (action === "live-step") { step(); return true; }
       if (action === "live-run") { run(); return true; }
       if (action === "live-pause") { if (ui.resolving) ui.pauseRequested = true; else { stopTimer(); ui.aiStatus = `Paused after Turn ${frontierView().boundary.turn}`; render(); } announce(`Playback will pause after completed turn ${frontierView().boundary.turn}.`); return true; }
-      if (action === "toggle-follow") { ui.followLive = !ui.followLive; render(); announce(`Follow live events ${ui.followLive ? "on" : "off"}.`); return true; }
-      if (action === "select-live-npc") { ui.selection = { type: "npc", id: control.dataset.npc }; render(); announce(`${selectedView().npcs[control.dataset.npc].name} owned perspective opened.`); return true; }
-      if (action === "select-live-boundary") { ui.selections[ui.branch] = control.dataset.boundary; const view = selectedView(); ui.selection = { type: "event", id: view.currentTurnEvents[0]?.id || view.events.at(-1)?.id }; render(); return true; }
-      if (action === "select-live-event") { const event = frontierView().events.find((item) => item.id === control.dataset.event); if (event) { const boundary = list().filter((item) => item.turn === event.turn).at(-1); ui.selections[ui.branch] = boundary.id; ui.selection = { type: "event", id: event.id }; render(); } return true; }
+      if (action === "toggle-follow") { if (isFollowing()) { ui.followLive[ui.branch] = false; render(); announce("Follow live events off."); } else { jumpToLatest(); announce("Follow live events on. Jumped to latest completed boundary."); } return true; }
+      if (action === "jump-live-latest") { jumpToLatest(); announce(`Jumped to latest completed ${selectedView().branch.kind} boundary.`); return true; }
+      if (action === "select-live-npc") { setInspectorSelection({ type: "npc", id: control.dataset.npc }); render({ inspectorToTop: true }); announce(`${selectedView().npcs[control.dataset.npc].name} owned perspective opened.`); return true; }
+      if (action === "select-live-boundary") { ui.selections[ui.branch] = control.dataset.boundary; const view = selectedView(); if (view.boundary.id !== frontierView().boundary.id) ui.followLive[ui.branch] = false; setInspectorSelection({ type: "event", id: view.currentTurnEvents[0]?.id || view.events.at(-1)?.id }); render({ inspectorToTop: true }); return true; }
+      if (action === "select-live-event") { const event = frontierView().events.find((item) => item.id === control.dataset.event); if (event) { const boundary = list().filter((item) => item.turn === event.turn).at(-1); ui.selections[ui.branch] = boundary.id; if (boundary.id !== frontierView().boundary.id) ui.followLive[ui.branch] = false; setInspectorSelection({ type: "event", id: event.id }); render({ inspectorToTop: true }); } return true; }
       if (action === "open-fork") { try { openForkAt(selectedView("original").boundary.turn); } catch (error) { fail(error); } return true; }
       if (action === "fork-terminal") { try { openForkAt(Number(control.dataset.turn)); } catch (error) { fail(error); } return true; }
       if (action === "close-fork") { ui.composer = false; render(); return true; }
@@ -471,14 +549,14 @@
       if (action === "apply-demo-intervention" && showDemoTools && selectedView().boundary.turn === demoConfig?.forkTurn) { applyIntervention(demoConfig.intervention); return true; }
       if (action === "apply-intervention") { applyIntervention(interventionRequest(selectedView())); return true; }
       if (action === "resolve-alternate") { try { adapter.completeAlternate(); render(); announce("Alternate future resolved deterministically. Use Step or Run to reveal its frozen boundaries."); } catch (error) { fail(error); } return true; }
-      if (action === "switch-branch") { stopTimer(); ui.branch = control.dataset.branch; ui.composer = false; ui.compare = false; const view = selectedView(); ui.selection = { type: "event", id: view.events.at(-1)?.id || null }; render(); announce(`${view.branch.kind} timeline selected.`); return true; }
+      if (action === "switch-branch") { stopTimer(); ui.branch = control.dataset.branch; ui.composer = false; ui.compare = false; const view = selectedView(); if (!currentInspectorSelection().id) setInspectorSelection({ type: "event", id: view.events.at(-1)?.id || null }); render(); announce(`${view.branch.kind} timeline selected.`); return true; }
       if (action === "open-comparison") { ui.compare = true; render(); announce("Validated side-by-side branch comparison opened."); return true; }
       if (action === "close-comparison") { ui.compare = false; render(); return true; }
-      if (action === "jump-comparison-event") { ui.compare = false; ui.branch = "alternate"; const boundary = list("alternate").filter((item) => item.turn === Number(control.dataset.turn)).at(-1); ui.selections.alternate = boundary.id; ui.selection = { type: "event", id: control.dataset.event }; render(); return true; }
+      if (action === "jump-comparison-event") { ui.compare = false; ui.branch = "alternate"; const boundary = list("alternate").filter((item) => item.turn === Number(control.dataset.turn)).at(-1); ui.selections.alternate = boundary.id; if (boundary.id !== frontierView("alternate").boundary.id) ui.followLive.alternate = false; setInspectorSelection({ type: "event", id: control.dataset.event }, "alternate"); render({ inspectorToTop: true }); return true; }
       return false;
     }
 
-    return Object.freeze({ start, render, handleAction });
+    return Object.freeze({ start, render, handleAction, dispose, navigationState });
   }
 
   return Object.freeze({ classifyLiveError, failedActionExplanation, boundaryHeading, terminalOutcomeSummary, create });

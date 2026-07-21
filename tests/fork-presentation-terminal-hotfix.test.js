@@ -266,7 +266,7 @@ test("terminal and failed-action presentation expose all required user actions a
   const source = fs.readFileSync(path.join(root, "live-presentation.js"), "utf8");
   for (const phrase of [
     "Authoritative terminal outcome", "Inspect decisive event", "Fork an earlier turn", "Compare branches",
-    "Return to start", "Valid decision, blocked by World conditions"
+    "Back to Start", "Start New Simulation", "Valid decision, blocked by World conditions"
   ]) assert.match(source, new RegExp(phrase));
   assert.match(source, /data-terminal-reason/);
 });

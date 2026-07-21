@@ -16,6 +16,7 @@
     selectedTurn: 0,
     isRunning: false,
     recordedStatus: "Ready",
+    followRecorded: true,
     selection: { type: "event", id: "evt-shared-t00-start" }
   };
 
@@ -45,6 +46,34 @@
     }, 20);
   }
 
+  function capturePresentationScroll() {
+    const timeline = document.querySelector?.(".timeline");
+    const inspector = document.querySelector?.(".inspector-scroll");
+    return {
+      pageX: window.scrollX || window.pageXOffset || 0,
+      pageY: window.scrollY || window.pageYOffset || 0,
+      timelineTop: timeline?.scrollTop || 0,
+      inspectorTop: inspector?.scrollTop || 0
+    };
+  }
+
+  function restorePresentationScroll(snapshot, options = {}) {
+    if (!snapshot) return;
+    const restore = () => {
+      const timeline = document.querySelector?.(".timeline");
+      const inspector = document.querySelector?.(".inspector-scroll");
+      if (timeline) timeline.scrollTop = options.timelineToEnd ? timeline.scrollHeight : snapshot.timelineTop;
+      if (inspector) inspector.scrollTop = options.inspectorToTop ? 0 : snapshot.inspectorTop;
+      if (typeof window.scrollTo === "function") window.scrollTo(snapshot.pageX, snapshot.pageY);
+    };
+    restore();
+    window.requestAnimationFrame?.(restore);
+  }
+
+  function focusMainWithoutScroll() {
+    document.getElementById("main-content")?.focus({ preventScroll: true });
+  }
+
   function renderStart() {
     app.innerHTML = `
       <section class="screen start-screen" aria-labelledby="product-title">
@@ -64,16 +93,23 @@
               <span><strong>12</strong> turns</span>
             </div>
           </div>
-          <div class="start-actions">
-            <button class="button button-primary" type="button" data-action="open-briefing" data-mode="ai-live">
-              Start AI Live Simulation <span aria-hidden="true">→</span>
+          <div class="start-actions start-primary-choices">
+            <button class="button button-primary mode-choice" type="button" data-action="open-briefing" data-mode="ai-live" aria-label="Start AI Live Simulation">
+              <strong>Start AI Live</strong><span>Real model-backed character decisions</span>
             </button>
-            <button class="button button-secondary" type="button" data-action="watch-recorded">
-              <span class="record-dot" aria-hidden="true"></span> Explore Recorded Demo
+            <button class="button button-secondary mode-choice" type="button" data-action="watch-recorded" aria-label="Explore Recorded Demo">
+              <strong>Explore Demo</strong><span>Reliable prebuilt experience</span>
             </button>
-            <button class="button button-tertiary" type="button" data-action="open-briefing" data-mode="deterministic">Deterministic Simulation</button>
           </div>
-          <p class="build-note">Real AI Live · deterministic simulation · immutable Recorded Demo</p>
+          <div class="mode-explanations" aria-label="Experience descriptions">
+            <p><strong>AI Live:</strong> Characters controlled by real language-model decisions.</p>
+            <p><strong>Explore Demo:</strong> A reliable prebuilt run in the complete product workspace.</p>
+          </div>
+          <details class="advanced-modes">
+            <summary>Advanced / Testing Modes</summary>
+            <p>Deterministic Simulation is designed for testing and reproducibility.</p>
+            <button class="button button-tertiary" type="button" data-action="open-briefing" data-mode="deterministic">Start Deterministic Simulation</button>
+          </details>
         </div>
         <aside class="start-art" aria-label="The Last Antidote scenario motif">
           <div class="vial-glow" aria-hidden="true">
@@ -92,7 +128,7 @@
     const modeLabel = isLive ? "AI Live" : isDeterministic ? "Deterministic" : "Recorded";
     const cast = characterEntries.map(([id, npc]) => `
       <article class="brief-card">
-        <div class="portrait portrait-${escapeHtml(npc.color)}" aria-hidden="true">${escapeHtml(npc.initials)}</div>
+        <img class="portrait portrait-image" src="assets/${escapeHtml(id)}.svg" alt="">
         <div>
           <p class="role-label">${escapeHtml(npc.role)}</p>
           <h3>${escapeHtml(npc.name)}</h3>
@@ -104,7 +140,7 @@
     app.innerHTML = `
       <section class="screen briefing-screen" aria-labelledby="briefing-title">
         <header class="briefing-header">
-          <button class="text-button" type="button" data-action="back-start"><span aria-hidden="true">←</span> Back</button>
+          <button class="text-button" type="button" data-action="back-start"><span aria-hidden="true">←</span> Back to Start</button>
           <div class="mode-pill ${isLive ? "mode-live" : ""}"><span class="record-dot" aria-hidden="true"></span> ${modeLabel}</div>
         </header>
         <div class="briefing-hero">
@@ -139,11 +175,12 @@
     `;
   }
 
-  function renderWorkspace() {
+  function renderWorkspace(options = {}) {
     if (state.mode !== "recorded") {
       renderLiveWorkspace();
       return;
     }
+    const scroll = capturePresentationScroll();
     const snapshot = data.snapshots[state.selectedTurn];
     const currentSnapshot = data.snapshots[state.currentTurn];
     const isHistorical = state.selectedTurn !== state.currentTurn;
@@ -166,7 +203,7 @@
             <div class="status-cell status-patient ${patientLost ? "status-lost" : ""}"><span>Patient</span><strong><i aria-hidden="true"></i> ${patientLost ? "Lost" : "Untreated"}</strong></div>
             <div class="mode-pill mode-pill-strong"><span class="record-dot" aria-hidden="true"></span> Recorded</div>
           </div>
-          <button class="icon-button" type="button" data-action="restart" title="Restart recorded session" aria-label="Restart recorded session">↻</button>
+          <div class="workspace-nav-actions"><button class="text-button" type="button" data-action="back-start">Back to Start</button><button class="icon-button" type="button" data-action="restart" title="Restart recorded session" aria-label="Restart recorded session">↻</button></div>
         </header>
 
         <div class="workspace-body">
@@ -179,6 +216,7 @@
               <div class="activity-state ${state.isRunning ? "is-running" : ""}"><span aria-hidden="true"></span>${state.isRunning ? "Recorded playback running" : escapeHtml(snapshot.activity)}</div>
             </div>
             ${isHistorical ? `<div class="historical-banner"><strong>Reviewing turn ${state.selectedTurn}</strong><span>Current branch remains at turn ${state.currentTurn}.</span></div>` : ""}
+            ${renderRecordedStoryBeat(snapshot)}
             <div class="world-map">${renderLocations(snapshot)}</div>
             <div class="world-legend" aria-label="Information legend">
               <span class="legend-chip fact">World fact</span>
@@ -207,11 +245,21 @@
         </div>
       </section>
     `;
+    restorePresentationScroll(scroll, options);
   }
 
   function renderLiveWorkspace() {
     if (livePresentation) livePresentation.render();
     else startLiveSession();
+  }
+
+  function renderRecordedStoryBeat(snapshot) {
+    const turnEvents = data.events.filter((event) => event.turn === state.selectedTurn && event.actor);
+    const actions = turnEvents.slice(0, 4).map((event) => {
+      const actor = data.characters[event.actor];
+      return `<button type="button" data-action="select-event" data-event="${escapeHtml(event.id)}"><img src="assets/${escapeHtml(event.actor)}.svg" alt=""><span><strong>${escapeHtml(actor.name)}</strong><small>${escapeHtml(event.category)} · ${escapeHtml(event.summary)}</small></span></button>`;
+    }).join("");
+    return `<section class="story-beat recorded-story-beat" aria-label="Selected recorded story summary"><div class="story-beat-copy"><p class="section-kicker">Recorded story beat</p><h3>${escapeHtml(snapshot.activity)}</h3><div class="story-actions">${actions || `<p class="empty-copy">The immutable starting boundary is ready.</p>`}</div></div><div class="story-vitals"><div><span>Patient</span><strong>${escapeHtml(snapshot.patient)}</strong></div><div><span>Branch</span><strong>Original</strong></div><div><span>Turns left</span><strong>${snapshot.turnsRemaining}</strong></div></div></section>`;
   }
 
   function renderLocations(snapshot) {
@@ -223,6 +271,7 @@
 
       return `
         <article class="location-card location-${locationId}">
+          <img class="location-illustration" src="assets/${escapeHtml(locationId)}.svg" alt="">
           <header>
             <span class="location-marker" aria-hidden="true">${escapeHtml(location.marker)}</span>
             <div>
@@ -243,7 +292,7 @@
     const selected = state.selection.type === "npc" && state.selection.id === id;
     return `
       <button class="npc-token ${selected ? "is-selected" : ""}" type="button" data-action="select-npc" data-npc="${escapeHtml(id)}" aria-label="Inspect ${escapeHtml(npc.name)}, ${escapeHtml(npc.role)}, at ${escapeHtml(data.locations[locationId].name)}">
-        <span class="portrait portrait-small portrait-${escapeHtml(npc.color)}" aria-hidden="true">${escapeHtml(npc.initials)}</span>
+        <img class="portrait portrait-small portrait-image" src="assets/${escapeHtml(id)}.svg" alt="">
         <span><strong>${escapeHtml(npc.shortName)}</strong><small>${escapeHtml(npc.role)}</small></span>
         <span class="posture-dot" title="${escapeHtml(npcState.posture)} posture" aria-label="${escapeHtml(npcState.posture)} posture"></span>
       </button>
@@ -313,7 +362,7 @@
           <p class="section-kicker">NPC inspector</p>
           <h2 id="inspector-title">${escapeHtml(npc.name)}</h2>
         </div>
-        <span class="portrait portrait-${escapeHtml(npc.color)}" aria-hidden="true">${escapeHtml(npc.initials)}</span>
+        <img class="portrait portrait-image" src="assets/${escapeHtml(id)}.svg" alt="">
       </div>
       <div class="identity-line">
         <span>${escapeHtml(npc.role)}</span><span>${escapeHtml(data.locations[locationId].name)}</span><span>${escapeHtml(npcState.posture)}</span>
@@ -451,7 +500,7 @@
     }).join("");
 
     return `
-      <section class="completed-outcome" aria-labelledby="completed-outcome-title">
+      <section class="completed-outcome terminal-completion recorded-terminal-completion" aria-labelledby="completed-outcome-title">
         <header>
           <div>
             <p class="section-kicker">Original outcome</p>
@@ -471,6 +520,7 @@
             <div class="pivotal-list">${pivotal}</div>
           </section>
         </div>
+        <div class="terminal-actions"><button class="button button-primary button-compact" type="button" data-action="restart">Start New Simulation</button><button class="button button-tertiary button-compact" type="button" data-action="back-start">Back to Start</button></div>
       </section>
     `;
   }
@@ -487,6 +537,8 @@
         <div class="playback-status">
           <span>Recorded Original</span>
           <strong>${escapeHtml(status)}</strong>
+          <button class="follow-toggle" type="button" data-action="toggle-recorded-follow" aria-pressed="${state.followRecorded}">Follow live events: ${state.followRecorded ? "On" : "Off"}</button>
+          ${state.followRecorded ? "" : `<button class="jump-latest" type="button" data-action="jump-recorded-latest">Jump to latest</button>`}
         </div>
         <div class="playback-buttons" role="group" aria-label="Recorded playback controls">
           <button class="button button-compact" title="Resolve one decision round and stop." type="button" data-action="step" ${state.isRunning || branchComplete ? "disabled" : ""}>Next Turn <span aria-hidden="true">→</span></button>
@@ -523,9 +575,26 @@
     state.selectedTurn = 0;
     state.isRunning = false;
     state.recordedStatus = "Ready";
+    state.followRecorded = true;
     state.selection = { type: "event", id: "evt-shared-t00-start" };
-    renderWorkspace();
+    renderWorkspace({ timelineToEnd: true, inspectorToTop: true });
     announce("Recorded session restarted at turn zero.");
+  }
+
+  function returnToStart() {
+    stopRunTimer();
+    livePresentation?.dispose?.();
+    livePresentation = null;
+    state.screen = "start";
+    state.mode = "recorded";
+    state.currentTurn = 0;
+    state.selectedTurn = 0;
+    state.isRunning = false;
+    state.recordedStatus = "Ready";
+    state.followRecorded = true;
+    state.selection = { type: "event", id: "evt-shared-t00-start" };
+    renderStart();
+    focusMainWithoutScroll();
   }
 
   function stepTurn() {
@@ -543,16 +612,18 @@
 
     state.currentTurn += 1;
     state.recordedStatus = "Ready";
-    state.selectedTurn = state.currentTurn;
-    const firstEvent = data.events.find((item) => item.turn === state.currentTurn);
-    state.selection = { type: "event", id: firstEvent.id };
+    if (state.followRecorded) {
+      state.selectedTurn = state.currentTurn;
+      const firstEvent = data.events.find((item) => item.turn === state.currentTurn);
+      state.selection = { type: "event", id: firstEvent.id };
+    }
 
     if (state.currentTurn === data.originalOutcome.turn) {
       state.isRunning = false;
       stopRunTimer();
     }
 
-    renderWorkspace();
+    renderWorkspace({ timelineToEnd: state.followRecorded });
     if (shouldAnnounce) {
       const snapshot = data.snapshots[state.currentTurn];
       announce(state.currentTurn === data.originalOutcome.turn
@@ -608,11 +679,12 @@
     if (!presentationApi || typeof presentationApi.create !== "function") {
       app.innerHTML = `
         <section class="live-state-screen error-state" aria-labelledby="live-unavailable-title">
+          <button class="text-button live-state-back" type="button" data-action="back-start">← Back to Start</button>
           <span class="error-glyph" aria-hidden="true">!</span>
           <p class="eyebrow">Recorded fallback available</p>
           <h1 id="live-unavailable-title">Live mode did not load</h1>
           <p>The immutable Recorded Original is still independently executable.</p>
-          <button class="button button-primary" type="button" data-action="use-recorded">Watch Recorded Original</button>
+          <button class="button button-primary" type="button" data-action="use-recorded">Explore Demo</button>
         </section>`;
       return;
     }
@@ -630,8 +702,7 @@
       },
       onBackStart() {
         livePresentation = null;
-        state.screen = "start";
-        renderStart();
+        returnToStart();
       }
     });
     livePresentation.start();
@@ -649,19 +720,18 @@
       state.mode = action === "watch-recorded" ? "recorded" : (control.dataset.mode || "recorded");
       state.screen = "briefing";
       renderBriefing();
-      document.getElementById("main-content").focus();
+      focusMainWithoutScroll();
       return;
     }
     if (action === "back-start") {
-      state.screen = "start";
-      renderStart();
+      returnToStart();
       return;
     }
     if (action === "enter-world") {
       state.screen = "workspace";
       if (state.mode !== "recorded") startLiveSession();
       else restartSession();
-      document.getElementById("main-content").focus();
+      focusMainWithoutScroll();
       return;
     }
     if (action === "use-recorded") {
@@ -686,9 +756,29 @@
       pauseRun();
       return;
     }
+    if (action === "toggle-recorded-follow") {
+      state.followRecorded = !state.followRecorded;
+      if (state.followRecorded) {
+        state.selectedTurn = state.currentTurn;
+        const event = data.events.filter((item) => item.turn === state.currentTurn).at(-1);
+        state.selection = { type: "event", id: event.id };
+      }
+      renderWorkspace({ timelineToEnd: state.followRecorded, inspectorToTop: state.followRecorded });
+      announce(`Follow live events ${state.followRecorded ? "on" : "off"}.`);
+      return;
+    }
+    if (action === "jump-recorded-latest") {
+      state.followRecorded = true;
+      state.selectedTurn = state.currentTurn;
+      const event = data.events.filter((item) => item.turn === state.currentTurn).at(-1);
+      state.selection = { type: "event", id: event.id };
+      renderWorkspace({ timelineToEnd: true, inspectorToTop: true });
+      announce(`Jumped to latest completed turn ${state.currentTurn}.`);
+      return;
+    }
     if (action === "select-npc") {
       state.selection = { type: "npc", id: control.dataset.npc };
-      renderWorkspace();
+      renderWorkspace({ inspectorToTop: true });
       announce(`${characterName(control.dataset.npc)} inspector opened.`);
       return;
     }
@@ -696,8 +786,9 @@
       const selectedEvent = data.events.find((item) => item.id === control.dataset.event);
       if (!selectedEvent || selectedEvent.turn > state.currentTurn) return;
       state.selectedTurn = selectedEvent.turn;
+      if (state.selectedTurn < state.currentTurn) state.followRecorded = false;
       state.selection = { type: "event", id: selectedEvent.id };
-      renderWorkspace();
+      renderWorkspace({ inspectorToTop: true });
       announce(`Event inspector opened for ${selectedEvent.summary}.`);
       return;
     }
@@ -705,9 +796,10 @@
       const turn = Number(control.dataset.turn);
       if (!Number.isInteger(turn) || turn < 0 || turn > state.currentTurn) return;
       state.selectedTurn = turn;
+      if (turn < state.currentTurn) state.followRecorded = false;
       const firstEvent = data.events.find((item) => item.turn === turn);
       state.selection = { type: "event", id: firstEvent.id };
-      renderWorkspace();
+      renderWorkspace({ inspectorToTop: true });
       announce(`Reviewing completed turn ${turn}. Current branch remains at turn ${state.currentTurn}.`);
     }
   });

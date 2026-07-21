@@ -16,14 +16,17 @@ test("desktop workspace stays in one viewport with independent narrative, timeli
   assert.match(css, /@media \(min-width: 1181px\)[\s\S]*\.inspector-scroll[\s\S]*overflow-y: auto;[\s\S]*overscroll-behavior: contain;/);
 });
 
-test("turn resolution never scrolls the document and follow-live scrolling is local and optional", () => {
+test("turn resolution restores document position while follow-live scrolling stays local and optional", () => {
   const source = read("live-presentation.js");
-  assert.doesNotMatch(source, /window\.scrollTo|win\.scrollTo|scrollIntoView/);
-  assert.match(source, /followLive: true/);
+  assert.doesNotMatch(source, /scrollIntoView/);
+  assert.match(source, /captureScrollState/);
+  assert.match(source, /win\.scrollTo\(snapshot\.pageX, snapshot\.pageY\)/);
+  assert.match(source, /followLive: \{ original: true, alternate: true \}/);
   assert.match(source, /data-action="toggle-follow"/);
-  assert.match(source, /aria-pressed="\$\{ui\.followLive\}"/);
-  assert.match(source, /timeline\.scrollTop = timeline\.scrollHeight/);
-  assert.match(source, /if \(ui\.followLive \|\| wasFollowingFrontier\)/);
+  assert.match(source, /aria-pressed="\$\{isFollowing\(\)\}"/);
+  assert.match(source, /timeline\.scrollHeight/);
+  assert.match(source, /if \(follow\)/);
+  assert.match(source, /data-action="jump-live-latest"/);
 });
 
 test("Recorded and Live playback controls use the same plain-language labels and exact tooltips", () => {
