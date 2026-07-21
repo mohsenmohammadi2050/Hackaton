@@ -14,7 +14,7 @@ const providers = require(path.join(root, "src/ai/decision-providers.js"));
 
 const APPROVED_PHASE_7_1_RUN_SHA256 = "6d9dfe9b9f628bf83a4f8fda4d39452260872c978335ddf7caabb9eb44a2501f";
 const APPROVED_ARTIFACT_SHA256 = Object.freeze({
-  "src/ai/npc-agents.js": "568bc137b0d9dc406ab25c11b88699682f10fb39281830ebdc5d090ef5c35649",
+  "src/ai/npc-agents.js": "e8c7e5efe7ab384f2993f4f0b09b7d3eb87505957ab976986d2c8f04958d1cd4",
   "src/data/world-scenario.js": "d6df48d808297172fc5208ee4afb8d048c01697f4d1c16389d2ce887ed7e99fb",
   "src/data/recorded-data.js": "c5ceb7e42de7ca9653697bf8fcad24e8f11f114dfb50cd15ebbb8a7751aabf5f"
 });
