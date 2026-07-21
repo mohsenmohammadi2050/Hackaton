@@ -30,6 +30,7 @@ function dynamicAdapter(base, resolveNext) {
 }
 
 function createHarness(adapter = adapterApi.createLiveSession(), options = {}) {
+  const formValues = options.formValues || {};
   const timeline = { scrollTop: 240, scrollHeight: 1200 };
   const inspector = { scrollTop: 90, scrollHeight: 800 };
   const app = { innerHTML: "", querySelector() { return null; } };
@@ -41,7 +42,7 @@ function createHarness(adapter = adapterApi.createLiveSession(), options = {}) {
       if (selector === ".inspector-scroll") return inspector;
       return null;
     },
-    getElementById() { return null; }
+    getElementById(id) { return Object.hasOwn(formValues, id) ? { value: formValues[id] } : null; }
   };
   const win = {
     location: { search: "" },
@@ -170,6 +171,36 @@ test("Jump to latest restores the latest completed turn and Follow mode", async 
   assert.equal(state.selections.original, latest.id);
   assert.equal(state.followLive.original, true);
   assert.equal(harness.timeline.scrollTop, harness.timeline.scrollHeight);
+});
+
+test("deterministic Turn 2 third-information fork prepares an Alternate future", async () => {
+  const harness = createHarness(undefined, {
+    formValues: {
+      "intervention-recipient": "mara",
+      "intervention-proposition": "obs-dain-sera-sighting",
+      "intervention-confidence": "72",
+      "intervention-description": "A sealed record supplies new evidence at the completed boundary."
+    }
+  });
+  await harness.presentation.start();
+  action(harness.presentation, "live-step");
+  action(harness.presentation, "live-step");
+  action(harness.presentation, "live-step");
+  const originalBefore = JSON.stringify(harness.adapter.getSession().original);
+  action(harness.presentation, "select-live-boundary", { boundary: boundaryAt(harness.adapter, "original", 2).id });
+  action(harness.presentation, "open-fork");
+  const propositionOptions = harness.app.innerHTML.match(/id="intervention-proposition">([\s\S]*?)<\/select>/)[1];
+  assert.equal([...propositionOptions.matchAll(/<option value="([^"]+)">/g)].map((match) => match[1])[2], "obs-dain-sera-sighting");
+  action(harness.presentation, "apply-intervention");
+  assert.equal(harness.adapter.getSession().alternate.status, "intervened");
+  assert.equal(harness.adapter.capabilities().alternateCanRun, true);
+  action(harness.presentation, "resolve-alternate");
+  assert.equal(harness.adapter.getSession().alternate.status, "completed");
+  assert.equal(JSON.stringify(harness.adapter.getSession().original), originalBefore);
+  assert.equal(harness.adapter.validate().valid, true);
+  assert.doesNotMatch(harness.app.innerHTML, /Simulation paused safely/);
+  assert.match(harness.app.innerHTML, /data-action="live-step"\s+>Next Turn/);
+  assert.match(harness.app.innerHTML, /data-action="live-run"\s+>Run to End/);
 });
 
 test("timeline scrolling is internal and no inspector action uses scrollIntoView", () => {

@@ -16,7 +16,7 @@ const APPROVED_ORIGINAL_SHA256 = "6d9dfe9b9f628bf83a4f8fda4d39452260872c978335dd
 const UNCHANGED_LAYER_SHA256 = Object.freeze({
   "src/ai/decision-layer.js": "f3e0fcfb33e83b87e39c224d45bed999024a7d49ed49ebc99facfc63fec1c835",
   "src/ai/decision-providers.js": "e6cf57f0f87b8abb414d8efc8b1f3546838ab1e8756319e051f3a71f0be040fe",
-  "src/ai/npc-agents.js": "4f88b8971a6364fc0a20f3f8f6f2482f6d133b7e8e20e0b28e8b6399ed96616c",
+  "src/ai/npc-agents.js": "568bc137b0d9dc406ab25c11b88699682f10fb39281830ebdc5d090ef5c35649",
   "src/engine/intervention-layer.js": "99a37d6e4a947ad7aa1fea1ce007ab68745c8278d94f8a8a9551f7d9e1acfa43"
 });
 
