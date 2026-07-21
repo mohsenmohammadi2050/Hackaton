@@ -6,13 +6,13 @@ const path = require("node:path");
 const test = require("node:test");
 
 const root = path.resolve(__dirname, "..");
-const scenario = require(path.join(root, "world-scenario.js"));
-const world = require(path.join(root, "world-engine.js"));
-const decision = require(path.join(root, "decision-layer.js"));
-const providers = require(path.join(root, "decision-providers.js"));
-const intervention = require(path.join(root, "intervention-layer.js"));
-const timeline = require(path.join(root, "timeline-fork-engine.js"));
-const integrity = require(path.join(root, "timeline-integrity.js"));
+const scenario = require(path.join(root, "src/data/world-scenario.js"));
+const world = require(path.join(root, "src/engine/world-engine.js"));
+const decision = require(path.join(root, "src/ai/decision-layer.js"));
+const providers = require(path.join(root, "src/ai/decision-providers.js"));
+const intervention = require(path.join(root, "src/engine/intervention-layer.js"));
+const timeline = require(path.join(root, "src/engine/timeline-fork-engine.js"));
+const integrity = require(path.join(root, "src/engine/timeline-integrity.js"));
 
 const PREVIOUS_RUN_SHA256 = "f563c2b79ebb8466b7064671f69ef617c47eeb45ab105a5b306e39edd2ce4fb7";
 const PHASE_7_1_RUN_SHA256 = "6d9dfe9b9f628bf83a4f8fda4d39452260872c978335ddf7caabb9eb44a2501f";

@@ -15,7 +15,7 @@ function read(relativePath) {
 function loadRecordedData() {
   const context = { window: {} };
   vm.createContext(context);
-  vm.runInContext(read("recorded-data.js"), context, { filename: "recorded-data.js" });
+  vm.runInContext(read("src/data/recorded-data.js"), context, { filename: "recorded-data.js" });
   return context.window.FORKED_FATES_PHASE1;
 }
 
@@ -59,7 +59,7 @@ function createAppHarness(options = {}) {
   };
   const context = { document, window };
   vm.createContext(context);
-  vm.runInContext(read("app.js"), context, { filename: "app.js" });
+  vm.runInContext(read("src/presentation/app.js"), context, { filename: "app.js" });
 
   return {
     html() {
@@ -182,18 +182,18 @@ test("Consequential events expose the Phase 1 inspector contract", () => {
 });
 
 test("Information types and the Recorded mode are visibly distinguished", () => {
-  const appSource = read("app.js");
+  const appSource = read("src/presentation/app.js");
   assert.match(appSource, />World fact</);
   assert.match(appSource, />Claim</);
   assert.match(appSource, />Belief</);
   assert.match(appSource, />Memory</);
-  assert.match(appSource, /Recorded preview/);
+  assert.match(appSource, /Explore Recorded Demo/);
   assert.match(appSource, /mode-pill-strong/);
   assert.match(appSource, /slice\(-6\)/);
 });
 
 test("Phase 1 navigation and inspection remain while later-phase controls stay excluded", () => {
-  const appSource = read("app.js");
+  const appSource = read("src/presentation/app.js");
   for (const action of [
     "open-briefing",
     "enter-world",
@@ -216,8 +216,8 @@ test("Phase 1 navigation and inspection remain while later-phase controls stay e
 test("The static entry point and responsive presentation are self-contained", () => {
   const html = read("index.html");
   const css = read("styles.css");
-  assert.match(html, /<script src="recorded-data\.js"><\/script>/);
-  assert.match(html, /<script src="app\.js"><\/script>/);
+  assert.match(html, /<script src="src\/data\/recorded-data\.js"><\/script>/);
+  assert.match(html, /<script src="src\/presentation\/app\.js"><\/script>/);
   assert.doesNotMatch(html, /https?:\/\//);
   assert.match(css, /@media \(max-width: 1180px\)/);
   assert.match(css, /@media \(max-width: 820px\)/);
@@ -228,10 +228,10 @@ test("The real application script completes the Phase 1 navigation journey", () 
   const harness = createAppHarness();
 
   assert.match(harness.html(), /Forked Fates/);
-  assert.match(harness.html(), /Begin The Last Antidote/);
-  assert.match(harness.html(), /Watch recorded demonstration/);
+  assert.match(harness.html(), /Start AI Live Simulation/);
+  assert.match(harness.html(), /Explore Recorded Demo/);
 
-  harness.click("open-briefing");
+  harness.click("watch-recorded");
   assert.match(harness.html(), /Scenario briefing/);
   assert.match(harness.html(), /twelve turns away/i);
   assert.doesNotMatch(harness.html(), /Orin ordered Sera/i);
@@ -274,7 +274,7 @@ test("Timeline review does not advance time and Restart restores turn zero", () 
 
   harness.click("restart");
   assert.match(harness.html(), /Turn 0 boundary/);
-  assert.match(harness.html(), /Ready to resolve turn 1/);
+  assert.match(harness.html(), /<strong>Ready<\/strong>/);
   assert.doesNotMatch(harness.html(), /Mara finds spare-key marks/);
   assert.match(harness.announcement(), /restarted at turn zero/i);
 });
@@ -400,7 +400,7 @@ test("Run reaches the complete Original outcome and stops automatically", () => 
   assert.match(harness.html(), />Lost</);
   assert.match(harness.html(), />Exposed</);
   assert.match(harness.html(), />Fractured</);
-  assert.match(harness.html(), /Original outcome recorded/);
+  assert.match(harness.html(), /<strong>Complete<\/strong>/);
 });
 
 test("Pause stops playback only at a completed boundary", () => {
@@ -416,7 +416,7 @@ test("Pause stops playback only at a completed boundary", () => {
   harness.click("pause");
 
   assert.equal(harness.pendingPlaybackTimers(), 0);
-  assert.match(harness.html(), /Turn 1 complete · next boundary ready/);
+  assert.match(harness.html(), /<strong>Paused<\/strong>/);
   assert.match(harness.announcement(), /paused at completed turn 1/i);
 });
 
@@ -428,7 +428,7 @@ test("Restart after outcome reproduces the Phase 1 turn-zero checkpoint", () => 
   harness.click("restart");
 
   assert.match(harness.html(), /Turn 0 boundary/);
-  assert.match(harness.html(), /Ready to resolve turn 1/);
+  assert.match(harness.html(), /<strong>Ready<\/strong>/);
   assert.doesNotMatch(harness.html(), /Branch complete/);
   assert.doesNotMatch(harness.html(), /Turn 1 complete/);
 });

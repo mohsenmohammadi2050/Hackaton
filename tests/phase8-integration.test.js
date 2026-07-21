@@ -7,21 +7,21 @@ const path = require("node:path");
 const test = require("node:test");
 
 const root = path.resolve(__dirname, "..");
-const adapterApi = require(path.join(root, "live-session-adapter.js"));
-const comparisonApi = require(path.join(root, "branch-comparison.js"));
-const demo = require(path.join(root, "demo-path-config.js"));
+const adapterApi = require(path.join(root, "src/adapters/live-session-adapter.js"));
+const comparisonApi = require(path.join(root, "src/presentation/branch-comparison.js"));
+const demo = require(path.join(root, "src/config/demo-path-config.js"));
 
 const ORIGINAL_SHA256 = "6d9dfe9b9f628bf83a4f8fda4d39452260872c978335ddf7caabb9eb44a2501f";
 const PROTECTED = Object.freeze({
-  "world-scenario.js": "8ec05d2924a05415613f4ee4a1b22b69f3aa7ee6040f7a210f048aeb19123abd",
-  "world-engine.js": "06122c845a42f4711ddbd997c6c399d56feadad83e062b97376a841bed6d480d",
-  "decision-layer.js": "e03c95ed1e6deaff1e9e093e07fbc811d729758694caf915b40a1d2a40781155",
-  "decision-providers.js": "b7e64fe16b3370f77fc3e39eb9513ddd402fb82fc761986608f6f2a4a69b677f",
-  "npc-agents.js": "c85f0ec1dcca49e6139b03b44702f911a2b85698ea1e2c9093119588825d8704",
-  "intervention-layer.js": "6049a340aeafb9499f58dd22235ecd798e31a7b23548e820ffd30f9ccdacd00a",
-  "timeline-fork-engine.js": "544f5ba5f38d7d1d07e4fb01923e1b893d3565b951ee1edcf2c979262c10c96f",
-  "timeline-integrity.js": "78d322ec63178493748c88191f2912758d8f8f1f1c578da9f8413e6b63caae72",
-  "recorded-data.js": "365e724d551eab0e78299e70e748616f667815b34c92cb033f0e0b2b88065a62"
+  "src/data/world-scenario.js": "8ec05d2924a05415613f4ee4a1b22b69f3aa7ee6040f7a210f048aeb19123abd",
+  "src/engine/world-engine.js": "06122c845a42f4711ddbd997c6c399d56feadad83e062b97376a841bed6d480d",
+  "src/ai/decision-layer.js": "d9a06526a7f8fc064ddcecba08301a2d1c6a8b4aa26a621f45eb16dc305190ff",
+  "src/ai/decision-providers.js": "b7e64fe16b3370f77fc3e39eb9513ddd402fb82fc761986608f6f2a4a69b677f",
+  "src/ai/npc-agents.js": "c85f0ec1dcca49e6139b03b44702f911a2b85698ea1e2c9093119588825d8704",
+  "src/engine/intervention-layer.js": "6049a340aeafb9499f58dd22235ecd798e31a7b23548e820ffd30f9ccdacd00a",
+  "src/engine/timeline-fork-engine.js": "da527f227f7975e09bfecbec56ed2c504329403dd143466ef99955b13c7d2e6c",
+  "src/engine/timeline-integrity.js": "78d322ec63178493748c88191f2912758d8f8f1f1c578da9f8413e6b63caae72",
+  "src/data/recorded-data.js": "365e724d551eab0e78299e70e748616f667815b34c92cb033f0e0b2b88065a62"
 });
 
 function sha256(value) { return crypto.createHash("sha256").update(value).digest("hex"); }
@@ -127,8 +127,8 @@ test("Live adapter reports fork and intervention failures without mutating the O
 
 test("Browser entry loads Recorded first and places Live behind the presentation adapter", () => {
   const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
-  const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  const livePresentation = fs.readFileSync(path.join(root, "live-presentation.js"), "utf8");
+  const app = fs.readFileSync(path.join(root, "src/presentation/app.js"), "utf8");
+  const livePresentation = fs.readFileSync(path.join(root, "src/presentation/live-presentation.js"), "utf8");
   assert.match(html, /recorded-data\.js[\s\S]*world-engine\.js[\s\S]*live-session-adapter\.js[\s\S]*live-presentation\.js[\s\S]*app\.js/);
   assert.doesNotMatch(app, /FORKED_FATES_WORLD|FORKED_FATES_DECISION|resolveTurn|runAutonomousOriginal/);
   assert.doesNotMatch(livePresentation, /FORKED_FATES_WORLD|FORKED_FATES_DECISION|resolveTurn|runAutonomousOriginal/);
@@ -137,7 +137,7 @@ test("Browser entry loads Recorded first and places Live behind the presentation
 });
 
 test("Live product surface includes complete playback, fork, intervention, branch, and comparison controls", () => {
-  const source = fs.readFileSync(path.join(root, "live-presentation.js"), "utf8");
+  const source = fs.readFileSync(path.join(root, "src/presentation/live-presentation.js"), "utf8");
   for (const action of [
     "live-step", "live-run", "live-pause", "restart-live", "open-fork", "apply-intervention",
     "resolve-alternate", "switch-branch", "open-comparison", "jump-comparison-event", "use-recorded"

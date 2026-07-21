@@ -7,8 +7,8 @@ const test = require("node:test");
 const vm = require("node:vm");
 
 const root = path.resolve(__dirname, "..");
-const scenario = require(path.join(root, "world-scenario.js"));
-const engine = require(path.join(root, "world-engine.js"));
+const scenario = require(path.join(root, "src/data/world-scenario.js"));
+const engine = require(path.join(root, "src/engine/world-engine.js"));
 
 function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), "utf8");
@@ -17,7 +17,7 @@ function read(relativePath) {
 function loadRecordedData() {
   const context = { window: {} };
   vm.createContext(context);
-  vm.runInContext(read("recorded-data.js"), context, { filename: "recorded-data.js" });
+  vm.runInContext(read("src/data/recorded-data.js"), context, { filename: "recorded-data.js" });
   return context.window.FORKED_FATES_PHASE1;
 }
 
@@ -58,9 +58,9 @@ function recordedNpcAt(data, npcId, turn) {
 
 test("Recorded, World, and Presentation layers have one-way-free production boundaries", () => {
   const entry = read("index.html");
-  const recorded = read("recorded-data.js");
-  const presentation = read("app.js");
-  const world = `${read("world-scenario.js")}\n${read("world-engine.js")}`;
+  const recorded = read("src/data/recorded-data.js");
+  const presentation = read("src/presentation/app.js");
+  const world = `${read("src/data/world-scenario.js")}\n${read("src/engine/world-engine.js")}`;
 
   assert.match(entry, /recorded-data\.js[\s\S]*world-scenario\.js[\s\S]*world-engine\.js[\s\S]*live-session-adapter\.js[\s\S]*app\.js/);
   assert.doesNotMatch(recorded, /FORKED_FATES_WORLD|world-engine|world-scenario/);

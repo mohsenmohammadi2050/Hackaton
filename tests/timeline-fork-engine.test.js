@@ -7,17 +7,17 @@ const path = require("node:path");
 const test = require("node:test");
 
 const root = path.resolve(__dirname, "..");
-const scenario = require(path.join(root, "world-scenario.js"));
-const world = require(path.join(root, "world-engine.js"));
-const providers = require(path.join(root, "decision-providers.js"));
-const timeline = require(path.join(root, "timeline-fork-engine.js"));
+const scenario = require(path.join(root, "src/data/world-scenario.js"));
+const world = require(path.join(root, "src/engine/world-engine.js"));
+const providers = require(path.join(root, "src/ai/decision-providers.js"));
+const timeline = require(path.join(root, "src/engine/timeline-fork-engine.js"));
 
 const APPROVED_ORIGINAL_SHA256 = "6d9dfe9b9f628bf83a4f8fda4d39452260872c978335ddf7caabb9eb44a2501f";
 const UNCHANGED_LAYER_SHA256 = Object.freeze({
-  "decision-layer.js": "e03c95ed1e6deaff1e9e093e07fbc811d729758694caf915b40a1d2a40781155",
-  "decision-providers.js": "b7e64fe16b3370f77fc3e39eb9513ddd402fb82fc761986608f6f2a4a69b677f",
-  "npc-agents.js": "c85f0ec1dcca49e6139b03b44702f911a2b85698ea1e2c9093119588825d8704",
-  "intervention-layer.js": "6049a340aeafb9499f58dd22235ecd798e31a7b23548e820ffd30f9ccdacd00a"
+  "src/ai/decision-layer.js": "d9a06526a7f8fc064ddcecba08301a2d1c6a8b4aa26a621f45eb16dc305190ff",
+  "src/ai/decision-providers.js": "b7e64fe16b3370f77fc3e39eb9513ddd402fb82fc761986608f6f2a4a69b677f",
+  "src/ai/npc-agents.js": "c85f0ec1dcca49e6139b03b44702f911a2b85698ea1e2c9093119588825d8704",
+  "src/engine/intervention-layer.js": "6049a340aeafb9499f58dd22235ecd798e31a7b23548e820ffd30f9ccdacd00a"
 });
 
 function sha256(value) {
@@ -96,7 +96,7 @@ test("Decision, Provider, agent, and Intervention layers remain byte-for-byte un
 });
 
 test("Timeline Fork Engine orchestrates immutable layers and never resolves World changes itself", () => {
-  const source = fs.readFileSync(path.join(root, "timeline-fork-engine.js"), "utf8");
+  const source = fs.readFileSync(path.join(root, "src/engine/timeline-fork-engine.js"), "utf8");
   assert.match(source, /world\.forkCompletedBoundary\(/);
   assert.match(source, /intervention\.applyIntervention\(/);
   assert.match(source, /decision\.decideAndResolveTurn\(/);

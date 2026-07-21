@@ -1,6 +1,6 @@
 "use strict";
 
-const adapterApi = require("../live-session-adapter");
+const adapterApi = require("../src/adapters/live-session-adapter");
 
 const candidates = Object.freeze([
   { turn: 0, recipientId: "mara", propositionId: "fact-case-spare-key", confidence: 90 },
@@ -36,13 +36,18 @@ function evaluate(candidate, index) {
     const comparison = adapter.compare();
     const outcomeChanges = ["medical", "truth", "social"].filter((key) => comparison.outcomes.original[key] !== comparison.outcomes.alternate[key]).length;
     const antidoteChanged = JSON.stringify(comparison.deltas.antidote.original) !== JSON.stringify(comparison.deltas.antidote.alternate);
-    const score = outcomeChanges * 100 + (antidoteChanged ? 40 : 0) + Math.min(comparison.changedIntents.length, 30) + Math.min(comparison.deltas.trust.length, 10);
+    const meaningfulIntents = comparison.changedIntents.filter((change) => !change.classifications.includes("evidence-changed-only") && !change.classifications.includes("no-meaningful-decision-change"));
+    const resultingEvents = comparison.changedEvents.filter((change) => change.turn > candidate.turn && change.meaningful);
+    const score = outcomeChanges * 100 + (antidoteChanged ? 40 : 0) + Math.min(meaningfulIntents.length, 30) + Math.min(resultingEvents.length * 2, 20) + Math.min(comparison.deltas.trust.length, 10);
     return {
       score,
       candidate,
       outcomeChanges,
       antidoteChanged,
-      changedIntents: comparison.changedIntents.length,
+      changedIntents: meaningfulIntents.length,
+      evidenceOnlyIntents: comparison.changedIntents.length - meaningfulIntents.length,
+      changedResultingEvents: resultingEvents.length,
+      meaningfulDivergence: comparison.meaningfulDivergence,
       trustChanges: comparison.deltas.trust.length,
       outcomes: comparison.outcomes
     };
