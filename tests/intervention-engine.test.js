@@ -17,7 +17,7 @@ const APPROVED_RUN_SHA256 = "6d9dfe9b9f628bf83a4f8fda4d39452260872c978335ddf7caa
 const IMMUTABLE_LAYER_SHA256 = Object.freeze({
   "src/ai/decision-layer.js": "f3e0fcfb33e83b87e39c224d45bed999024a7d49ed49ebc99facfc63fec1c835",
   "src/ai/decision-providers.js": "e6cf57f0f87b8abb414d8efc8b1f3546838ab1e8756319e051f3a71f0be040fe",
-  "src/ai/npc-agents.js": "568bc137b0d9dc406ab25c11b88699682f10fb39281830ebdc5d090ef5c35649"
+  "src/ai/npc-agents.js": "e8c7e5efe7ab384f2993f4f0b09b7d3eb87505957ab976986d2c8f04958d1cd4"
 });
 
 function sha256(value) {

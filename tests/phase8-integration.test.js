@@ -17,7 +17,7 @@ const PROTECTED = Object.freeze({
   "src/engine/world-engine.js": "e8208b565a7914716957491ea67da022d684001f9a880bfdf86590b2e3d781d7",
   "src/ai/decision-layer.js": "f3e0fcfb33e83b87e39c224d45bed999024a7d49ed49ebc99facfc63fec1c835",
   "src/ai/decision-providers.js": "e6cf57f0f87b8abb414d8efc8b1f3546838ab1e8756319e051f3a71f0be040fe",
-  "src/ai/npc-agents.js": "568bc137b0d9dc406ab25c11b88699682f10fb39281830ebdc5d090ef5c35649",
+  "src/ai/npc-agents.js": "e8c7e5efe7ab384f2993f4f0b09b7d3eb87505957ab976986d2c8f04958d1cd4",
   "src/engine/intervention-layer.js": "99a37d6e4a947ad7aa1fea1ce007ab68745c8278d94f8a8a9551f7d9e1acfa43",
   "src/engine/timeline-fork-engine.js": "2f6daddca6f9075d08b49b479bff648d3e9702f0b0b37aec4b6ae70e99fb3198",
   "src/engine/timeline-integrity.js": "e86f4e54a27a5c30121b3ed0c9d57fb213f301a79b046232bf4f937a8ccfadc6",
